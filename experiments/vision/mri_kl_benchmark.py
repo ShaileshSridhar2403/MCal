@@ -19,6 +19,7 @@ from tabulate import tabulate
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from torchvision import datasets
+import pdb
 
 # Add MCal to path (file is now in experiments/vision/)
 mcal_root = Path(__file__).parent.parent.parent
@@ -47,6 +48,7 @@ from calibrators import MCal, PlattCalibrator, TemperatureScaling
 
 # Import transform modules for backward compatibility  
 from transforms.lambda_transforms import ExpectationLambdaTransform, OptimizedLambdaTransform
+from transforms.logits import LogitsSharpTransform
 
 
 def load_mri_model(augmentation='vanilla', device=None):
@@ -286,6 +288,9 @@ def apply_transform(outputs, method, device=None, **kwargs):
     elif method == 'optimized_lambda':
         return apply_optimized_lambda_transform(outputs, device, **kwargs)
     
+    elif method == 'logits_sharp':
+        return apply_logits_sharp_transform(outputs, device, **kwargs)
+    
     else:
         raise ValueError(f"Unknown transform method: {method}")
 
@@ -386,51 +391,90 @@ def apply_optimized_lambda_transform(outputs, device, num_epochs=1000):
     return transformed_outputs
 
 
-def apply_mcal_calibrator(outputs, device, kappa=10.0, max_steps=1000, **kwargs):
-    """Apply MCal calibrator using clean MCal implementation."""
+def apply_logits_sharp_transform(outputs, device, num_epochs=1000, **kwargs):
+    """Apply LogitsSharp transform using MCal module."""
+    # Create temporary file for fitting
+    temp_path = "/tmp/mri_temp_predictions_logits_sharp.npy"
+    np.save(temp_path, outputs)
+    
+    # Create and fit transform
+    transform = LogitsSharpTransform(device=device)
+    transform.fit(temp_path, num_epochs=num_epochs)
+    
+    # Apply transform fraction by fraction using the fitted parameters  
     n_fractions, n_samples, n_classes = outputs.shape
     transformed_outputs = np.zeros_like(outputs)
     
-    for fraction in tqdm(range(n_fractions), desc="Applying MCal calibrator"):
-        # For calibration, we need ablated (corrupted) and clean probabilities
-        # Use the baseline (fraction 0) as "clean" and current fraction as "ablated"
-        clean_probs = torch.tensor(outputs[0], dtype=torch.float32, device=device)  # baseline
+    for fraction in tqdm(range(n_fractions), desc="Applying logits sharp transform"):
+        fraction_preds = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
+        
+        # Apply logits sharp transformation for this fraction
+        transformed_probs = transform.transform(fraction_preds, fraction_idx=fraction)
+        transformed_outputs[fraction] = transformed_probs.cpu().numpy()
+    
+    # Clean up
+    if os.path.exists(temp_path):
+        os.remove(temp_path)
+    
+    return transformed_outputs
+
+
+def apply_mcal_calibrator(outputs, device, kappa=4.0, max_steps=10000, **kwargs):
+    """Apply MCal calibrator using uniform target distribution - single training like LogitsSharp."""
+    n_fractions, n_samples, n_classes = outputs.shape
+    transformed_outputs = np.zeros_like(outputs)
+    
+    # Create uniform target distribution
+    uniform_target = torch.ones(n_classes, device=device) / n_classes
+    
+    # Train one MCal calibrator per fraction (like LogitsSharp trains per fraction)
+    calibrators = []
+    
+    for fraction in tqdm(range(n_fractions), desc="Training MCal calibrators"):
+        # Use current fraction as ablated probabilities
         ablated_probs = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
         
-        # Create and fit MCal calibrator
-        calibrator = MCal(num_classes=n_classes)
+        # Create and fit MCal calibrator with uniform target
+        calibrator = MCal(num_classes=n_classes, target_distribution=uniform_target)
         calibrator.to(device)
+        # pdb.set_trace()
         calibrator.fit(
             ablated_probs=ablated_probs,
-            clean_probs=clean_probs,
+            target_distribution=uniform_target,
             kappa=kappa,
             max_steps=max_steps,
-            verbose=False
+            lr=1e-1,  # Explicitly set lr to match LogitsSharp
+            verbose=False  # Disable verbose for cleaner output
         )
-        
-        # Apply calibration using forward method
-        calibrated_probs = calibrator.forward(ablated_probs)
+        calibrators.append(calibrator)
+    
+    # Apply calibration using trained calibrators
+    for fraction in tqdm(range(n_fractions), desc="Applying MCal calibration"):
+        ablated_probs = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
+        calibrated_probs = calibrators[fraction].forward(ablated_probs)
         transformed_outputs[fraction] = calibrated_probs.detach().cpu().numpy()
     
     return transformed_outputs
 
 
 def apply_platt_calibrator(outputs, device, max_steps=1000, **kwargs):
-    """Apply Platt scaling calibrator."""
+    """Apply Platt scaling calibrator with uniform target."""
     n_fractions, n_samples, n_classes = outputs.shape
     transformed_outputs = np.zeros_like(outputs)
     
+    # Create uniform target distribution
+    uniform_target = torch.ones(n_classes, device=device) / n_classes
+    
     for fraction in tqdm(range(n_fractions), desc="Applying Platt calibrator"):
-        # Use baseline as clean and current fraction as ablated
-        clean_probs = torch.tensor(outputs[0], dtype=torch.float32, device=device)
+        # Use current fraction as ablated probabilities
         ablated_probs = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
         
-        # Create and fit Platt calibrator
-        calibrator = PlattCalibrator(num_classes=n_classes)
+        # Create and fit Platt calibrator with uniform target
+        calibrator = PlattCalibrator(num_classes=n_classes, target_distribution=uniform_target)
         calibrator.to(device)
         calibrator.fit(
             ablated_probs=ablated_probs,
-            clean_probs=clean_probs,
+            target_distribution=uniform_target,
             max_steps=max_steps,
             verbose=False
         )
@@ -443,21 +487,23 @@ def apply_platt_calibrator(outputs, device, max_steps=1000, **kwargs):
 
 
 def apply_temperature_calibrator(outputs, device, max_steps=1000, **kwargs):
-    """Apply temperature scaling calibrator."""
+    """Apply temperature scaling calibrator with uniform target."""
     n_fractions, n_samples, n_classes = outputs.shape
     transformed_outputs = np.zeros_like(outputs)
     
+    # Create uniform target distribution
+    uniform_target = torch.ones(n_classes, device=device) / n_classes
+    
     for fraction in tqdm(range(n_fractions), desc="Applying Temperature calibrator"):
-        # Use baseline as clean and current fraction as ablated
-        clean_probs = torch.tensor(outputs[0], dtype=torch.float32, device=device)
+        # Use current fraction as ablated probabilities
         ablated_probs = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
         
-        # Create and fit temperature scaling calibrator
-        calibrator = TemperatureScaling(num_classes=n_classes)
+        # Create and fit temperature scaling calibrator with uniform target
+        calibrator = TemperatureScaling(num_classes=n_classes, target_distribution=uniform_target)
         calibrator.to(device)
         calibrator.fit(
             ablated_probs=ablated_probs,
-            clean_probs=clean_probs,
+            target_distribution=uniform_target,
             max_steps=max_steps,
             verbose=False
         )
@@ -559,11 +605,11 @@ def build_kl_comparison_table(aggregated_results, include_methods=None):
         'mcal': "MCal (Vector Scaling)",
         'platt': "Platt Scaling",
         'temperature': "Temperature Scaling",
+        'logits_sharp': "Logits Sharp Transform",
         # Keep old transform names for backward compatibility
         'expectation_prob': "Expectation Probability Transform",
         'expectation_onehot': "Expectation One-hot Transform", 
-        'optimized_lambda': "Optimized Lambda Transform",
-        'logits_sharp': "Logits Sharp Transform"
+        'optimized_lambda': "Optimized Lambda Transform"
     }
     
     # Add baseline if available
@@ -615,7 +661,7 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
     """
     # Default methods - include all calibrators and pre-computed methods
     if methods is None:
-        methods = ['baseline', 'patchcutout', 'patch_drop', 'mcal', 'platt', 'temperature']
+        methods = ['baseline', 'patchcutout', 'patch_drop', 'mcal', 'platt', 'temperature', 'logits_sharp']
     
     device = torch.device(device)
     
@@ -702,7 +748,7 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
                 # Configure method-specific parameters
                 method_kwargs = {}
                 if method in ['mcal', 'platt', 'temperature']:
-                    method_kwargs['max_steps'] = 1000  # Calibrator optimization steps
+                    method_kwargs['max_steps'] = 1000  # Calibrator optimization steps (match MCal default for full convergence)
                 elif method == 'mcal':
                     method_kwargs['kappa'] = 10.0  # Sharpening parameter for MCal
                 elif method == 'optimized_lambda':
@@ -769,8 +815,8 @@ def main():
     """Main execution function."""
     parser = argparse.ArgumentParser(description="MRI KL Divergence Benchmark")
     parser.add_argument("--methods", nargs='+', 
-                       default=['baseline', 'patchcutout', 'patch_drop', 'mcal', 'platt', 'temperature'],
-                       help="Methods to include in benchmark. Available: baseline, patchcutout, patch_drop, mcal, platt, temperature, expectation_prob, expectation_onehot, optimized_lambda")
+                       default=['baseline', 'patchcutout', 'patch_drop', 'mcal', 'platt', 'temperature', 'logits_sharp'],
+                       help="Methods to include in benchmark. Available: baseline, patchcutout, patch_drop, mcal, platt, temperature, logits_sharp, expectation_prob, expectation_onehot, optimized_lambda")
     parser.add_argument("--runs", type=int, default=3, help="Number of runs")
     parser.add_argument("--samples", type=int, default=1000, help="Samples per fraction")
     parser.add_argument("--fractions", type=int, default=16, help="Number of fractions")
@@ -787,21 +833,23 @@ def main():
     device = args.device if torch.cuda.is_available() or args.device == "cpu" else "cpu"
     print(f"Using device: {device}")
     
+    # pdb.set_trace()
     # Run benchmark
     aggregated_results = process_mri_dataset(
         methods=args.methods,
         device=device,
         save_dir=args.save_dir,
         n_runs=args.runs,
-        n_samples=args.samples,
+        n_samples=args.samples, 
         n_fractions=args.fractions,
         overwrite=args.overwrite,
         use_cache=not args.no_cache,
         patchcutout_data_dir=args.patchcutout_data_dir
     )
     
-    print("\nBenchmark completed!")
+    print("\nBenchmark completed! YAY!")
 
 
 if __name__ == "__main__":
+    # pdb.set_trace()
     main()
