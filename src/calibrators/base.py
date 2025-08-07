@@ -21,14 +21,12 @@ class BaseCalibrator(nn.Module, ABC):
     def fit(
         self, 
         ablated_probs: torch.Tensor, 
-        clean_probs: torch.Tensor,
         **kwargs
     ) -> Dict[str, Any]:
         """Fit the calibrator to the given probability distributions.
         
         Args:
             ablated_probs: Ablated probability distributions of shape (batch_size, num_classes)
-            clean_probs: Clean probability distributions of shape (batch_size, num_classes)
             **kwargs: Additional arguments specific to the calibrator
             
         Returns:
@@ -78,16 +76,17 @@ class BaseCalibrator(nn.Module, ABC):
         assert probs.shape[1] == self.num_classes, f"Expected {self.num_classes} classes, got {probs.shape[1]}"
         assert torch.all(probs >= -1e-8) and torch.all(probs <= 1 + 1e-8), "Expected probability values between 0 and 1"
     
-    def _validate_fit_inputs(self, ablated_probs: torch.Tensor, clean_probs: torch.Tensor) -> None:
+    def _validate_fit_inputs(self, ablated_probs: torch.Tensor, target_distribution: Optional[torch.Tensor] = None) -> None:
         """Validate inputs for fitting.
         
         Args:
             ablated_probs: Ablated probability distributions
-            clean_probs: Clean probability distributions
+            target_distribution: Optional target distribution
             
         Raises:
             AssertionError: If inputs are not valid
         """
         self._validate_input_probs(ablated_probs)
-        self._validate_input_probs(clean_probs)
-        assert ablated_probs.shape == clean_probs.shape, "Input shapes must match"
+        if target_distribution is not None:
+            assert target_distribution.shape[0] == self.num_classes, f"Target distribution must have {self.num_classes} elements"
+            assert torch.allclose(target_distribution.sum(), torch.tensor(1.0), atol=1e-6), "Target distribution must sum to 1"
