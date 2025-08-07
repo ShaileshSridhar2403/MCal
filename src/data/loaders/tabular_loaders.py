@@ -401,8 +401,13 @@ class CardiotocographyLoader(TabularDataLoader):
             return None, None, None
         
         try:
-            # Read Excel file (may require openpyxl)
-            df = pd.read_excel(data_file, sheet_name="Data")
+            # Read Excel file (requires xlrd or openpyxl)
+            try:
+                df = pd.read_excel(data_file, sheet_name="Data")
+            except ImportError as e:
+                logger.error(f"Missing dependency for Excel files: {e}")
+                logger.error("Install with: pip install xlrd openpyxl")
+                return None, None, None
             
             # Basic preprocessing would go here
             # This is dataset-specific and would need to be implemented

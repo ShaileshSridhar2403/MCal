@@ -47,7 +47,7 @@ class MCal(BaseCalibrator):
         ema_decay: float = 0.9,
         scale_before_sharpen: bool = True,
         verbose: bool = False,
-        use_random_targets: bool = True,
+        use_random_targets: bool = False,
     ) -> Dict[str, Any]:
         """Fit the calibration model to the given probability distributions.
         

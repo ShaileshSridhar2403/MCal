@@ -81,6 +81,10 @@ class MedicalQALoader(BaseDataLoader):
         self.tokenizer = None
         self.max_length = 512
     
+    def get_transforms(self, split: str = "train", augmentation: Optional[str] = None, **kwargs):
+        """Language datasets don't use transforms like vision datasets."""
+        return None
+    
     def set_tokenizer(self, tokenizer, max_length: int = 512) -> None:
         """Set tokenizer for text processing.
         
@@ -346,6 +350,10 @@ class PhysionetLoader(BaseDataLoader):
             "modality": "tabular",
             "task": "binary_classification"
         }
+    
+    def get_transforms(self, split: str = "train", augmentation: Optional[str] = None, **kwargs):
+        """Tabular datasets don't use transforms like vision datasets."""
+        return None
     
     def download_dataset(self, **kwargs) -> None:
         """Download Physionet 2012 dataset."""
