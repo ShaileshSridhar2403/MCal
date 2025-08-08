@@ -81,8 +81,8 @@ def kl_divergence(P: torch.Tensor, Q: torch.Tensor) -> torch.Tensor:
         KL divergence D(P||Q)
     """
     eps = 1e-8
-    P = P + eps
-    Q = Q + eps
+    P = P.clamp(min=eps, max=1-eps)
+    Q = Q.clamp(min=eps, max=1-eps)
     return (P * (P / Q).log()).sum()
 
 
