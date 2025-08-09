@@ -1,6 +1,7 @@
 """MCal - Vector scaling calibration model."""
 
 from typing import Optional, Dict, Any
+from experiments.ilovekldiv import calibrated_logits_hybrid
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -69,6 +70,23 @@ class MCal_Test(BaseCalibrator):
         if ablated_probs is not None:
             self.fit(ablated_probs)
 
+    def forward(self, probs: torch.Tensor) -> torch.Tensor:
+        """Forward pass of the calibration model.
+        
+        Args:
+            probs (torch.Tensor): Input probability distributions of shape (batch_size, num_classes)
+            
+        Returns:
+            torch.Tensor: Calibrated probability distributions
+        """
+        self._validate_input_probs(probs)
+        
+        probs_clamped = torch.clamp(probs, min=1e-8, max=1-1e-8)
+        logits = torch.log(probs_clamped)
+        logits = self.w.view(1, -1) * logits + self.b.view(1, -1)
+        q = F.softmax(logits, dim=1)
+        return q
+
     def fit(
         self,
         ablated_probs: torch.Tensor,
@@ -104,7 +122,7 @@ class MCal_Test(BaseCalibrator):
         optimizer = optim.Adam(self.parameters(), lr=lr)
 
         pbar = tqdm(range(max_steps), desc="MCal Training") if verbose else range(max_steps)
-        for step in pbar:
+        for _ in pbar:
             optimizer.zero_grad()
 
             q = self.forward(ablated_probs)
@@ -140,19 +158,81 @@ class MCal_Test(BaseCalibrator):
         self._is_fitted = True
         return stats
 
-    def forward(self, probs: torch.Tensor) -> torch.Tensor:
+
+class MCal_CE(BaseCalibrator):
+    """MCal with cross-entropy loss."""
+
+    def __init__(self, num_classes: int, head_type: str = "linear"):
+        super().__init__(num_classes)
+
+        self.head_type = head_type
+        if head_type == "linear":
+            self.head = nn.Linear(num_classes, num_classes)
+        elif head_type == "mlp":
+            self.head = nn.Sequential(
+                nn.Linear(num_classes, 8 * num_classes),
+                nn.GELU(),
+                nn.Linear(8 * num_classes, num_classes))
+        else:
+            raise ValueError(f"Invalid head type: {head_type}")
+
+    def forward(self, ablated_probs: torch.Tensor, return_logits: bool = False) -> torch.Tensor:
         """Forward pass of the calibration model.
         
         Args:
-            probs (torch.Tensor): Input probability distributions of shape (batch_size, num_classes)
+            ablated_probs (torch.Tensor): Ablated probability distributions
+            return_logits (bool): Whether to return logits or probabilities
             
         Returns:
             torch.Tensor: Calibrated probability distributions
         """
-        self._validate_input_probs(probs)
+        ablated_logits = torch.log(ablated_probs.clamp(min=1e-8))
+        calibrated_logits = self.head(ablated_logits)
+        if return_logits:
+            return calibrated_logits
+        else:
+            return F.softmax(calibrated_logits, dim=1)
+
+    def fit(
+        self,
+        ablated_probs: torch.Tensor,
+        target_labels: torch.Tensor,
+        max_steps: int = 10000,
+        lr: float = 1e-3,
+        verbose: bool = False,
+    ) -> Dict[str, Any]:
+        """Fit the calibration model to the given probability distributions.
         
-        probs_clamped = torch.clamp(probs, min=1e-8, max=1-1e-8)
-        logits = torch.log(probs_clamped)
-        logits = self.w.view(1, -1) * logits + self.b.view(1, -1)
-        q = F.softmax(logits, dim=1)
-        return q
+        Args:
+            ablated_probs (torch.Tensor): Ablated probability distributions
+            target_labels (torch.Tensor): Target labels
+            max_steps (int): Maximum number of optimization steps
+            lr (float): Learning rate for optimization
+            verbose (bool): Whether to show progress bar and metrics
+            
+        Returns:
+            Dictionary containing training statistics
+        """
+
+        optimizer = optim.Adam(self.parameters(), lr=lr)
+        stats = {"loss": [], "acc": []}
+
+        pbar = tqdm(range(max_steps), desc="MCal Training") if verbose else range(max_steps)
+        for _ in pbar:
+            optimizer.zero_grad()
+
+            calibrated_logits = self.forward(ablated_probs, return_logits=True)
+            loss = nn.CrossEntropyLoss()(calibrated_logits, target_labels)
+            loss.backward()
+            optimizer.step()
+
+            acc = (calibrated_logits.argmax(dim=1) == target_labels).float().mean()
+            stats["loss"].append(loss.item())
+            stats["acc"].append(acc.item())
+
+            if verbose:
+                pbar.set_description(f"Head {self.head_type}, Loss {loss.item():.3e}, Acc {acc:.3f}")
+
+        self._is_fitted = True
+        return stats
+
