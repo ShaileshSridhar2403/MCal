@@ -92,7 +92,7 @@ class MCal_Test(BaseCalibrator):
         ablated_probs: torch.Tensor,
         target_probs: torch.Tensor | None = None,
         kappa: float = 1.0,
-        max_steps: int = 10000,
+        max_steps: int = 5000,
         lr: float = 1e-2,
         verbose: bool = False,
     ) -> Dict[str, Any]:
@@ -197,7 +197,7 @@ class MCal_CE(BaseCalibrator):
         self,
         ablated_probs: torch.Tensor,
         target_labels: torch.Tensor,
-        max_steps: int = 10000,
+        max_steps: int = 5000,
         lr: float = 1e-3,
         verbose: bool = False,
     ) -> Dict[str, Any]:

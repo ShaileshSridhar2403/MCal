@@ -33,8 +33,8 @@ def missingness_bias(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     """
     _, num_classes = p.shape
     assert num_classes == q.shape[1]
-    p_dist = F.one_hot(p.argmax(dim=1), num_classes=num_classes).mean(dim=0).float()
-    q_dist = F.one_hot(q.argmax(dim=1), num_classes=num_classes).mean(dim=0).float()
+    p_dist = F.one_hot(p.argmax(dim=1), num_classes=num_classes).float().mean(dim=0)
+    q_dist = F.one_hot(q.argmax(dim=1), num_classes=num_classes).float().mean(dim=0)
     return kl_divergence(p_dist, q_dist)
 
 
