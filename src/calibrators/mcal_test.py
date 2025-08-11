@@ -158,6 +158,14 @@ class MCal_Test(BaseCalibrator):
         self._is_fitted = True
         return stats
 
+class ResidualBlock(nn.Module):
+    def __init__(self, module: nn.Module):
+        super().__init__()
+        self.module = module
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x + self.module(x)
+
 
 class MCal_CE(BaseCalibrator):
     """MCal with cross-entropy loss."""
@@ -169,10 +177,10 @@ class MCal_CE(BaseCalibrator):
         if head_type == "linear":
             self.head = nn.Linear(num_classes, num_classes)
         elif head_type == "mlp":
-            self.head = nn.Sequential(
-                nn.Linear(num_classes, 8 * num_classes),
+            self.head = ResidualBlock(nn.Sequential(
+                nn.Linear(num_classes, 4 * num_classes),
                 nn.GELU(),
-                nn.Linear(8 * num_classes, num_classes))
+                nn.Linear(4 * num_classes, num_classes)))
         else:
             raise ValueError(f"Invalid head type: {head_type}")
 
