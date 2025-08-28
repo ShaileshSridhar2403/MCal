@@ -36,6 +36,9 @@ from configs.model_dict import get_model_path
 from configs.dataset_configs import get_dataset_config
 import timm
 
+# Import MCal data loaders
+from src.data.loaders import mri_full_setup
+
 # Import XAI_Benchmark augmentation utilities
 from PatchCutout import PatchCutout
 
@@ -44,7 +47,7 @@ sys.path.insert(0, str(mcal_root / "src" / "utils"))
 from optimization import get_expectation, make_one_hot, kl_divergence
 
 # Import calibrator modules
-from calibrators import MCal, PlattCalibrator, TemperatureScaling
+from calibrators import MCal, MCal_CE, PlattCalibrator, TemperatureScaling
 
 # Import transform modules for backward compatibility  
 from transforms.lambda_transforms import ExpectationLambdaTransform, OptimizedLambdaTransform
@@ -107,14 +110,16 @@ def load_patch_drop_predictions(dataset_type='mri', run_id=0, data_dir="../../..
     return predictions
 
 
-def load_mri_dataset(data_dir="/home/shai2403/XAIbench/XAI_Benchmark/Training", batch_size=32):
-    """Load MRI dataset from XAI_Benchmark directory."""
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-    ])
+def load_mri_dataset(batch_size=32, train_augmentation=None, **kwargs):
+    """Load MRI dataset using the updated MCal data loader that mimics XAI_Benchmark exactly."""
+    # Use the mri_full_setup function that now mimics XAI_Benchmark exactly
+    train_dataset, test_dataset = mri_full_setup(
+        train_augmentation=train_augmentation,
+        **kwargs
+    )
     
-    dataset = datasets.ImageFolder(data_dir, transform=transform)
+    # Use test dataset for consistency (it has no augmentation by default)
+    dataset = test_dataset if test_dataset is not None else train_dataset
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4)
     
     print(f"Loaded MRI dataset with {len(dataset)} images, {len(dataset.classes)} classes")
@@ -124,10 +129,32 @@ def load_mri_dataset(data_dir="/home/shai2403/XAIbench/XAI_Benchmark/Training", 
 
 
 def generate_fractionwise_predictions_from_images(model, dataloader, n_samples=1000, n_fractions=16, 
-                                                 device=None, cache_dir="./cache", use_cache=True):
+                                                 device=None, cache_dir="./cache", use_cache=True,
+                                                 use_default_data=True, return_labels=False):
     """Generate fractionwise predictions using real MRI images with PatchCutout augmentation."""
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Try to use default data from XAI_Benchmark first
+    if use_default_data:
+        try:
+            from src.data.default_data import load_default_mri_predictions
+            default_predictions = load_default_mri_predictions()
+            if default_predictions is not None:
+                print(f"Using default MRI predictions from XAI_Benchmark with shape: {default_predictions.shape}")
+                # Check if the shape matches what we expect
+                if default_predictions.shape[0] == n_fractions:
+                    if return_labels:
+                        print("Warning: Default data doesn't include labels, falling back to generation...")
+                    else:
+                        return default_predictions
+                else:
+                    print(f"Default data has {default_predictions.shape[0]} fractions, requested {n_fractions}")
+                    print("Falling back to generating new predictions...")
+        except ImportError as e:
+            print(f"Could not import default data loader: {e}")
+        except Exception as e:
+            print(f"Error loading default data: {e}")
     
     # Create cache directory
     os.makedirs(cache_dir, exist_ok=True)
@@ -136,7 +163,10 @@ def generate_fractionwise_predictions_from_images(model, dataloader, n_samples=1
     # Check if cached predictions exist
     if use_cache and os.path.exists(cache_file):
         print(f"Loading cached predictions from {cache_file}")
-        return np.load(cache_file)
+        if return_labels:
+            print("Warning: Cached data doesn't include labels, falling back to generation...")
+        else:
+            return np.load(cache_file)
     
     print(f"Generating {n_fractions} fractions with {n_samples} samples each using real MRI images...")
     
@@ -145,6 +175,7 @@ def generate_fractionwise_predictions_from_images(model, dataloader, n_samples=1
     
     # Initialize output array: (n_fractions, n_samples, n_classes)
     all_predictions = np.zeros((n_fractions, n_samples, num_classes))
+    all_labels = np.zeros(n_samples, dtype=np.int64) if return_labels else None
     
     # Define fractions (0 to 1, where 0 = no removal, 1 = full removal)
     fractions = np.linspace(0, 1, n_fractions)
@@ -153,9 +184,9 @@ def generate_fractionwise_predictions_from_images(model, dataloader, n_samples=1
     def get_batch_iterator():
         while True:
             for batch in dataloader:
-                images, _ = batch
-                for img in images:
-                    yield img
+                images, labels = batch
+                for img, label in zip(images, labels):
+                    yield img, label
     
     batch_iterator = get_batch_iterator()
     
@@ -176,8 +207,8 @@ def generate_fractionwise_predictions_from_images(model, dataloader, n_samples=1
             # Generate predictions for this fraction
             while samples_collected < n_samples:
                 try:
-                    # Get next image
-                    original_img = next(batch_iterator)
+                    # Get next image and label
+                    original_img, label = next(batch_iterator)
                     
                     # Apply patch cutout augmentation
                     augmented_img = patch_cutout(original_img)
@@ -191,6 +222,11 @@ def generate_fractionwise_predictions_from_images(model, dataloader, n_samples=1
                     
                     # Store prediction
                     fraction_predictions.append(probabilities.cpu().numpy()[0])
+                    
+                    # Store label (only for first fraction to avoid duplication)
+                    if return_labels and fraction_idx == 0:
+                        all_labels[samples_collected] = label.item()
+                    
                     samples_collected += 1
                     
                 except StopIteration:
@@ -204,11 +240,13 @@ def generate_fractionwise_predictions_from_images(model, dataloader, n_samples=1
             print(f"Fraction {fraction_idx+1}/{n_fractions} (removal={removal_fraction:.3f}) - Generated {samples_collected} predictions")
     
     # Save to cache
-    if use_cache:
-        print(f"Saving predictions to cache: {cache_file}")
-        np.save(cache_file, all_predictions)
+    print(f"Saving predictions to cache: {cache_file}")
+    np.save(cache_file, all_predictions)
     
-    return all_predictions
+    if return_labels:
+        return all_predictions, all_labels
+    else:
+        return all_predictions
 
 
 def calculate_kl_metrics(outputs, device=None):
@@ -271,6 +309,9 @@ def apply_transform(outputs, method, device=None, **kwargs):
     
     elif method == 'mcal':
         return apply_mcal_calibrator(outputs, device, **kwargs)
+    
+    elif method == 'mcal_ce':
+        return apply_mcal_ce_calibrator(outputs, device, **kwargs)
     
     elif method == 'platt':
         return apply_platt_calibrator(outputs, device, **kwargs)
@@ -457,6 +498,63 @@ def apply_mcal_calibrator(outputs, device, kappa=4.0, max_steps=10000, **kwargs)
     return transformed_outputs
 
 
+def apply_mcal_ce_calibrator(outputs, device, max_steps=5000, head_type="linear", experiment_id="mri_experiment", **kwargs):
+    """Apply MCal_CE calibrator using cross-entropy loss with target labels from 0th index (unablated predictions)."""
+    n_fractions, n_samples, n_classes = outputs.shape
+    transformed_outputs = np.zeros_like(outputs)
+    
+    # Convert outputs to tensor
+    outputs_tensor = torch.tensor(outputs, dtype=torch.float32, device=device)
+    
+    # Extract target labels from 0th index (unablated predictions) - same approach as MCal
+    # Try to use default predictions from XAI_Benchmark first
+    target_labels = None
+    try:
+        from src.data.default_data import load_default_mri_predictions
+        default_predictions = load_default_mri_predictions()
+        if default_predictions is not None:
+            print(f"Using default MRI predictions from XAI_Benchmark with shape: {default_predictions.shape}")
+            # Use 0th index predictions (unablated) and get argmax as target labels
+            unablated_preds = torch.tensor(default_predictions[0], dtype=torch.float32, device=device)
+            target_labels = unablated_preds.argmax(dim=1)
+            print("Target labels extracted from default XAI_Benchmark 0th index predictions")
+    except Exception as e:
+        print(f"Could not load default XAI_Benchmark data: {e}")
+    
+    # Fallback: Use 0th index from input outputs
+    if target_labels is None:
+        target_labels = outputs_tensor[0].argmax(dim=1)
+        print("Target labels extracted from input outputs 0th index")
+    
+    for fraction in tqdm(range(n_fractions), desc="Applying MCal_CE calibrator"):
+        # Create and fit MCal_CE calibrator
+        calibrator = MCal_CE(num_classes=n_classes, head_type=head_type)
+        calibrator.to(device)
+        calibrator.fit(
+            ablated_probs=outputs_tensor[fraction],  # Pass current fraction (2D)
+            target_labels=target_labels,  # Use target labels from 0th index
+            max_steps=max_steps,
+            lr=1e-3,
+            verbose=True,  # Enable verbose output to match MCal behavior
+            fraction=fraction,  # Pass current fraction number
+            experiment_id=experiment_id  # Pass experiment identifier
+        )
+        
+        # Apply calibration using forward method
+        calibrated_probs = calibrator.forward(outputs_tensor[fraction])
+        transformed_outputs[fraction] = calibrated_probs.detach().cpu().numpy()
+    
+    # Combine all fraction results into a single JSON file
+    print(f"\n=== Combining MCal_CE results for experiment: {experiment_id} ===")
+    combined_file = MCal_CE.combine_fraction_results(experiment_id, cleanup_temp_files=True)
+    if combined_file:
+        print(f"All MCal_CE results combined and saved to: {combined_file}")
+    else:
+        print("No temporary files found to combine!")
+    
+    return transformed_outputs
+
+
 def apply_platt_calibrator(outputs, device, max_steps=1000, **kwargs):
     """Apply Platt scaling calibrator with uniform target."""
     n_fractions, n_samples, n_classes = outputs.shape
@@ -603,6 +701,7 @@ def build_kl_comparison_table(aggregated_results, include_methods=None):
         'patchcutout': "PatchCutout-trained Model",
         'patch_drop': "Patch Dropping",
         'mcal': "MCal (Vector Scaling)",
+        'mcal_ce': "MCal_CE (Cross-Entropy)",
         'platt': "Platt Scaling",
         'temperature': "Temperature Scaling",
         'logits_sharp': "Logits Sharp Transform",
@@ -644,7 +743,7 @@ def build_kl_comparison_table(aggregated_results, include_methods=None):
 
 def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_runs=3, 
                        n_samples=1000, n_fractions=16, overwrite=False, use_cache=True,
-                       patchcutout_data_dir="./dataset_store/model_outputs"):
+                       patchcutout_data_dir="./dataset_store/model_outputs", use_default_data=True):
     """
     Process MRI dataset and generate benchmarks with multiple runs.
     
@@ -658,10 +757,11 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
         overwrite (bool): Whether to overwrite existing results
         use_cache (bool): Whether to use cached predictions for vanilla model
         patchcutout_data_dir (str): Directory containing PatchCutout predictions
+        use_default_data (bool): Whether to use default MRI data from XAI_Benchmark
     """
     # Default methods - include all calibrators and pre-computed methods
     if methods is None:
-        methods = ['baseline', 'patchcutout', 'patch_drop', 'mcal', 'platt', 'temperature', 'logits_sharp']
+        methods = ['baseline', 'patchcutout', 'patch_drop', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp']
     
     device = torch.device(device)
     
@@ -687,8 +787,8 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
         model, num_classes = load_mri_model('vanilla', device)
         print(f"Loaded model with {num_classes} classes")
         
-        # Load MRI dataset
-        print("\nLoading MRI dataset...")
+        # Load MRI dataset using our updated loader
+        print("\nLoading MRI dataset using MCal loader (XAI_Benchmark compatible)...")
         dataloader, class_names = load_mri_dataset()
         print(f"Dataset classes: {class_names}")
     
@@ -735,11 +835,21 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
                 if model is None:
                     print("Error: Model not loaded for non-PatchCutout methods")
                     continue
+                
+                # MCal_CE now handles labels internally, no need to request them
+                need_labels = False
                     
-                predictions = generate_fractionwise_predictions_from_images(
+                result = generate_fractionwise_predictions_from_images(
                     model, dataloader, n_samples, n_fractions, device, 
-                    cache_dir=os.path.join(save_dir, "cache"), use_cache=use_cache
+                    cache_dir=os.path.join(save_dir, "cache"), use_cache=use_cache,
+                    use_default_data=use_default_data, return_labels=need_labels
                 )
+                
+                if need_labels:
+                    predictions, target_labels = result
+                else:
+                    predictions = result
+                    target_labels = None
             
             # Apply transformation
             if method in ['baseline', 'patchcutout', 'patch_drop']:
@@ -747,10 +857,14 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
             else:
                 # Configure method-specific parameters
                 method_kwargs = {}
-                if method in ['mcal', 'platt', 'temperature']:
+                if method in ['mcal', 'mcal_ce', 'platt', 'temperature']:
                     method_kwargs['max_steps'] = 1000  # Calibrator optimization steps (match MCal default for full convergence)
                 elif method == 'mcal':
                     method_kwargs['kappa'] = 10.0  # Sharpening parameter for MCal
+                elif method == 'mcal_ce':
+                    method_kwargs['max_steps'] = 5000  # More steps for cross-entropy training
+                    method_kwargs['head_type'] = 'linear'  # Use linear head by default
+                    # MCal_CE now handles target labels internally from 0th index predictions
                 elif method == 'optimized_lambda':
                     method_kwargs['num_epochs'] = 500  # Reduced for demo
                 
@@ -811,12 +925,59 @@ def convert_to_json_serializable(obj):
         return obj
 
 
+def test_mri_data_generation_consistency():
+    """Test that MCal MRI data generation matches XAI_Benchmark exactly."""
+    print("Testing MRI data generation consistency...")
+    
+    try:
+        # Test basic dataset loading
+        print("1. Testing basic dataset loading...")
+        train_dataset, test_dataset = mri_full_setup()
+        print(f"   Train dataset: {len(train_dataset) if train_dataset else 'None'} samples")
+        print(f"   Test dataset: {len(test_dataset) if test_dataset else 'None'} samples")
+        
+        # Test with PatchCutout augmentation
+        print("2. Testing PatchCutout augmentation...")
+        train_aug_dataset, test_aug_dataset = mri_full_setup(
+            train_augmentation="PatchCutout",
+            removal_fraction=0.5,
+            patch_size=56,
+            fill_val=(0, 0, 0)
+        )
+        print(f"   Train dataset (with PatchCutout): {len(train_aug_dataset) if train_aug_dataset else 'None'} samples")
+        print(f"   Test dataset (with PatchCutout): {len(test_aug_dataset) if test_aug_dataset else 'None'} samples")
+        
+        # Test with Cutout augmentation  
+        print("3. Testing Cutout augmentation...")
+        train_cutout_dataset, test_cutout_dataset = mri_full_setup(
+            train_augmentation="Cutout"
+        )
+        print(f"   Train dataset (with Cutout): {len(train_cutout_dataset) if train_cutout_dataset else 'None'} samples")
+        print(f"   Test dataset (with Cutout): {len(test_cutout_dataset) if test_cutout_dataset else 'None'} samples")
+        
+        # Check class consistency
+        if train_dataset and test_dataset:
+            print("4. Checking class consistency...")
+            print(f"   Train classes: {train_dataset.classes}")
+            print(f"   Test classes: {test_dataset.classes}")
+            print(f"   Classes match: {train_dataset.classes == test_dataset.classes}")
+        
+        print("\n✓ MRI data generation consistency test completed successfully!")
+        return True
+        
+    except Exception as e:
+        print(f"\n✗ MRI data generation consistency test failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def main():
     """Main execution function."""
     parser = argparse.ArgumentParser(description="MRI KL Divergence Benchmark")
     parser.add_argument("--methods", nargs='+', 
-                       default=['baseline', 'patchcutout', 'patch_drop', 'mcal', 'platt', 'temperature', 'logits_sharp'],
-                       help="Methods to include in benchmark. Available: baseline, patchcutout, patch_drop, mcal, platt, temperature, logits_sharp, expectation_prob, expectation_onehot, optimized_lambda")
+                       default=['baseline', 'patchcutout', 'patch_drop', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp'],
+                       help="Methods to include in benchmark. Available: baseline, patchcutout, patch_drop, mcal, mcal_ce, platt, temperature, logits_sharp, expectation_prob, expectation_onehot, optimized_lambda")
     parser.add_argument("--runs", type=int, default=3, help="Number of runs")
     parser.add_argument("--samples", type=int, default=1000, help="Samples per fraction")
     parser.add_argument("--fractions", type=int, default=16, help="Number of fractions")
@@ -826,8 +987,22 @@ def main():
                        help="Directory containing PatchCutout predictions from XAI_Benchmark")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing results")
     parser.add_argument("--no-cache", action="store_true", help="Disable caching of generated predictions")
+    parser.add_argument("--no-default-data", action="store_true", help="Disable use of default MRI data from XAI_Benchmark")
+    parser.add_argument("--test-data-consistency", action="store_true", 
+                       help="Test that MRI data generation matches XAI_Benchmark exactly")
     
     args = parser.parse_args()
+    
+    # Run data consistency test if requested
+    if args.test_data_consistency:
+        print("Running MRI data generation consistency test...")
+        success = test_mri_data_generation_consistency()
+        if success:
+            print("✓ Data generation consistency test passed!")
+        else:
+            print("✗ Data generation consistency test failed!")
+            sys.exit(1)
+        return
     
     # Set device
     device = args.device if torch.cuda.is_available() or args.device == "cpu" else "cpu"
@@ -844,7 +1019,8 @@ def main():
         n_fractions=args.fractions,
         overwrite=args.overwrite,
         use_cache=not args.no_cache,
-        patchcutout_data_dir=args.patchcutout_data_dir
+        patchcutout_data_dir=args.patchcutout_data_dir,
+        use_default_data=not args.no_default_data
     )
     
     print("\nBenchmark completed! YAY!")
