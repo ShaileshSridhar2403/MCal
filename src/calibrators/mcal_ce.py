@@ -91,6 +91,7 @@ class MCal_CE(BaseCalibrator):
             calibrated_logits = self.scale * ablated_logits + self.bias
         else:
             # Use the neural network head (linear or mlp)
+            # pdb.set_trace()
             calibrated_logits = self.head(ablated_logits)
             
         if return_logits:
@@ -122,7 +123,7 @@ class MCal_CE(BaseCalibrator):
         Returns:
             Dictionary containing training statistics
         """
-        self._validate_fit_inputs(ablated_probs, None)
+        # self._validate_fit_inputs(ablated_probs, None)
         
         # pdb.set_trace()
         lr = 1e-4
@@ -133,7 +134,7 @@ class MCal_CE(BaseCalibrator):
         pbar = tqdm(range(max_steps), desc="MCal_CE Training") if verbose else range(max_steps)
         for step in pbar:
             optimizer.zero_grad()
-
+            # pdb.set_trace()
             calibrated_logits = self.forward(ablated_probs, return_logits=True)
             loss = nn.CrossEntropyLoss()(calibrated_logits, target_labels)
             

@@ -20,12 +20,14 @@ from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from torchvision import datasets
 import pdb
+import notebook_data_loader as ndl
 
 # Add MCal to path (file is now in experiments/vision/)
 mcal_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(mcal_root))
 sys.path.insert(0, str(mcal_root / "configs"))
 sys.path.insert(0, str(mcal_root / "src"))
+sys.path.insert(0, str(mcal_root / "experiments"))
 
 # Add XAI_Benchmark to path for data loading and augmentation
 xai_root = mcal_root.parent / "XAI_Benchmark"
@@ -39,19 +41,21 @@ import timm
 # Import MCal data loaders
 from src.data.loaders import mri_full_setup
 
-# Import XAI_Benchmark augmentation utilities
-from PatchCutout import PatchCutout
+# Import augmentation utilities from MCal
+from src.data.augmentation.patch_cutout import PatchCutout
 
 # Import utils directly to avoid circular imports
-sys.path.insert(0, str(mcal_root / "src" / "utils"))
-from optimization import get_expectation, make_one_hot, kl_divergence
+from src.utils.optimization import get_expectation, make_one_hot, kl_divergence
 
 # Import calibrator modules
-from calibrators import MCal, MCal_CE, PlattCalibrator, TemperatureScaling
+from src.calibrators.mcal import MCal
+from src.calibrators.mcal_ce import MCal_CE
+from src.calibrators.platt import PlattCalibrator
+from src.calibrators.temperature import TemperatureScaling
 
 # Import transform modules for backward compatibility  
-from transforms.lambda_transforms import ExpectationLambdaTransform, OptimizedLambdaTransform
-from transforms.logits import LogitsSharpTransform
+from src.transforms.lambda_transforms import ExpectationLambdaTransform, OptimizedLambdaTransform
+from src.transforms.logits import LogitsSharpTransform
 
 
 def load_mri_model(augmentation='vanilla', device=None):
@@ -288,7 +292,7 @@ def calculate_kl_metrics(outputs, device=None):
     }
 
 
-def apply_transform(outputs, method, device=None, **kwargs):
+def apply_transform(outputs, labels,method, device=None, **kwargs):
     """Apply a transformation method to the outputs."""
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -311,13 +315,13 @@ def apply_transform(outputs, method, device=None, **kwargs):
         return apply_mcal_calibrator(outputs, device, **kwargs)
     
     elif method == 'mcal_ce':
-        return apply_mcal_ce_calibrator(outputs, device, **kwargs)
+        return apply_mcal_ce_calibrator(outputs,labels, device, **kwargs)
     
     elif method == 'platt':
-        return apply_platt_calibrator(outputs, device, **kwargs)
+        return apply_platt_calibrator(outputs, labels, device, **kwargs)
     
     elif method == 'temperature':
-        return apply_temperature_calibrator(outputs, device, **kwargs)
+        return apply_temperature_calibrator(outputs, labels, device, **kwargs)
     
     # Keep the old transform methods for backward compatibility
     elif method == 'expectation_prob':
@@ -348,7 +352,7 @@ def apply_expectation_prob_transform(outputs, device):
     
     # Apply transform fraction by fraction using the fitted parameters
     n_fractions, n_samples, n_classes = outputs.shape
-    transformed_outputs = np.zeros_like(outputs)
+    transformed_outputs = np.zeros_like(outputs.detach().cpu().numpy())
     
     for fraction in tqdm(range(n_fractions), desc="Applying expectation prob transform"):
         fraction_preds = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
@@ -380,7 +384,7 @@ def apply_expectation_onehot_transform(outputs, device):
     
     # Apply transform fraction by fraction using the fitted parameters
     n_fractions, n_samples, n_classes = outputs.shape
-    transformed_outputs = np.zeros_like(outputs)
+    transformed_outputs = np.zeros_like(outputs.detach().cpu().numpy())
     
     for fraction in tqdm(range(n_fractions), desc="Applying expectation onehot transform"):
         fraction_preds = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
@@ -412,7 +416,7 @@ def apply_optimized_lambda_transform(outputs, device, num_epochs=1000):
     
     # Apply transform fraction by fraction using the fitted parameters
     n_fractions, n_samples, n_classes = outputs.shape
-    transformed_outputs = np.zeros_like(outputs)
+    transformed_outputs = np.zeros_like(outputs.detach().cpu().numpy())
     
     for fraction in tqdm(range(n_fractions), desc="Applying optimized lambda transform"):
         fraction_preds = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
@@ -444,8 +448,8 @@ def apply_logits_sharp_transform(outputs, device, num_epochs=1000, **kwargs):
     
     # Apply transform fraction by fraction using the fitted parameters  
     n_fractions, n_samples, n_classes = outputs.shape
-    transformed_outputs = np.zeros_like(outputs)
-    
+    transformed_outputs = np.zeros_like(outputs.detach().cpu().numpy())
+
     for fraction in tqdm(range(n_fractions), desc="Applying logits sharp transform"):
         fraction_preds = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
         
@@ -462,8 +466,9 @@ def apply_logits_sharp_transform(outputs, device, num_epochs=1000, **kwargs):
 
 def apply_mcal_calibrator(outputs, device, kappa=4.0, max_steps=10000, **kwargs):
     """Apply MCal calibrator using uniform target distribution - single training like LogitsSharp."""
+    # pdb.set_trace()
     n_fractions, n_samples, n_classes = outputs.shape
-    transformed_outputs = np.zeros_like(outputs)
+    transformed_outputs = np.zeros_like(outputs.detach().cpu().numpy())
     
     # Create uniform target distribution
     uniform_target = torch.ones(n_classes, device=device) / n_classes
@@ -498,33 +503,38 @@ def apply_mcal_calibrator(outputs, device, kappa=4.0, max_steps=10000, **kwargs)
     return transformed_outputs
 
 
-def apply_mcal_ce_calibrator(outputs, device, max_steps=5000, head_type="linear", experiment_id="mri_experiment", **kwargs):
+def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=5000, head_type="linear", experiment_id="mri_experiment", **kwargs):
     """Apply MCal_CE calibrator using cross-entropy loss with target labels from 0th index (unablated predictions)."""
-    n_fractions, n_samples, n_classes = outputs.shape
-    transformed_outputs = np.zeros_like(outputs)
-    
+    # pdb.set_trace()
+    # outputs_tensor, target_labels = ndl.load_mri_data()
+
+    n_fractions, n_samples, n_classes = outputs_tensor.shape
+    transformed_outputs = np.zeros_like(outputs_tensor.detach().cpu().numpy())
+
     # Convert outputs to tensor
-    outputs_tensor = torch.tensor(outputs, dtype=torch.float32, device=device)
+    # outputs_tensor = torch.tensor(outputs, dtype=torch.float32, device=device)
     
     # Extract target labels from 0th index (unablated predictions) - same approach as MCal
     # Try to use default predictions from XAI_Benchmark first
-    target_labels = None
-    try:
-        from src.data.default_data import load_default_mri_predictions
-        default_predictions = load_default_mri_predictions()
-        if default_predictions is not None:
-            print(f"Using default MRI predictions from XAI_Benchmark with shape: {default_predictions.shape}")
-            # Use 0th index predictions (unablated) and get argmax as target labels
-            unablated_preds = torch.tensor(default_predictions[0], dtype=torch.float32, device=device)
-            target_labels = unablated_preds.argmax(dim=1)
-            print("Target labels extracted from default XAI_Benchmark 0th index predictions")
-    except Exception as e:
-        print(f"Could not load default XAI_Benchmark data: {e}")
+    # target_labels = None
+
+    # unablated_preds, outputs_tensor, target_labels = ndl.load_mri_data()
+    # try:
+    #     # from src.data.default_data import load_default_mri_predictions
+    #     default_predictions = load_default_mri_predictions()
+    #     if default_predictions is not None:
+    #         print(f"Using default MRI predictions from XAI_Benchmark with shape: {default_predictions.shape}")
+    #         # Use 0th index predictions (unablated) and get argmax as target labels
+    #         unablated_preds = torch.tensor(default_predictions[0], dtype=torch.float32, device=device)
+    #         target_labels = unablated_preds.argmax(dim=1)
+    #         print("Target labels extracted from default XAI_Benchmark 0th index predictions")
+    # except Exception as e:
+    #     print(f"Could not load default XAI_Benchmark data: {e}")
     
-    # Fallback: Use 0th index from input outputs
-    if target_labels is None:
-        target_labels = outputs_tensor[0].argmax(dim=1)
-        print("Target labels extracted from input outputs 0th index")
+    # # Fallback: Use 0th index from input outputs
+    # if target_labels is None:
+    #     target_labels = outputs_tensor[0].argmax(dim=1)
+    #     print("Target labels extracted from input outputs 0th index")
     
     for fraction in tqdm(range(n_fractions), desc="Applying MCal_CE calibrator"):
         # Create and fit MCal_CE calibrator
@@ -555,53 +565,52 @@ def apply_mcal_ce_calibrator(outputs, device, max_steps=5000, head_type="linear"
     return transformed_outputs
 
 
-def apply_platt_calibrator(outputs, device, max_steps=1000, **kwargs):
-    """Apply Platt scaling calibrator with uniform target."""
+def apply_platt_calibrator(outputs, labels, device, max_steps=1000, **kwargs):
+    """Apply Platt scaling calibrator fitted on fraction 0 (unablated inputs)."""
     n_fractions, n_samples, n_classes = outputs.shape
-    transformed_outputs = np.zeros_like(outputs)
+    transformed_outputs = np.zeros_like(outputs.detach().cpu().numpy())
     
-    # Create uniform target distribution
-    uniform_target = torch.ones(n_classes, device=device) / n_classes
+    # Convert labels to tensor
+    labels_tensor = torch.tensor(labels, dtype=torch.long, device=device)
     
+    # Fit calibrator only on fraction 0 (unablated inputs)
+    unablated_probs = torch.tensor(outputs[0], dtype=torch.float32, device=device)
+    calibrator = PlattCalibrator(num_classes=n_classes)
+    calibrator.to(device)
+    calibrator.fit(
+        ablated_probs=unablated_probs,
+        labels=labels_tensor,
+        max_steps=max_steps,
+        verbose=False
+    )
+    
+    # Apply the fitted calibrator to all fractions
     for fraction in tqdm(range(n_fractions), desc="Applying Platt calibrator"):
-        # Use current fraction as ablated probabilities
         ablated_probs = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
-        
-        # Create and fit Platt calibrator with uniform target
-        calibrator = PlattCalibrator(num_classes=n_classes, target_distribution=uniform_target)
-        calibrator.to(device)
-        calibrator.fit(
-            ablated_probs=ablated_probs,
-            target_distribution=uniform_target,
-            max_steps=max_steps,
-            verbose=False
-        )
-        
-        # Apply calibration using forward method
         calibrated_probs = calibrator.forward(ablated_probs)
         transformed_outputs[fraction] = calibrated_probs.detach().cpu().numpy()
     
     return transformed_outputs
 
 
-def apply_temperature_calibrator(outputs, device, max_steps=1000, **kwargs):
-    """Apply temperature scaling calibrator with uniform target."""
+def apply_temperature_calibrator(outputs, labels, device, max_steps=1000, **kwargs):
+    """Apply temperature scaling calibrator with true labels."""
     n_fractions, n_samples, n_classes = outputs.shape
-    transformed_outputs = np.zeros_like(outputs)
+    transformed_outputs = np.zeros_like(outputs.detach().cpu().numpy())
     
-    # Create uniform target distribution
-    uniform_target = torch.ones(n_classes, device=device) / n_classes
+    # Convert labels to tensor
+    labels_tensor = torch.tensor(labels, dtype=torch.long, device=device)
     
     for fraction in tqdm(range(n_fractions), desc="Applying Temperature calibrator"):
         # Use current fraction as ablated probabilities
         ablated_probs = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
         
-        # Create and fit temperature scaling calibrator with uniform target
-        calibrator = TemperatureScaling(num_classes=n_classes, target_distribution=uniform_target)
+        # Create and fit temperature scaling calibrator with true labels
+        calibrator = TemperatureScaling(num_classes=n_classes)
         calibrator.to(device)
         calibrator.fit(
             ablated_probs=ablated_probs,
-            target_distribution=uniform_target,
+            labels=labels_tensor,
             max_steps=max_steps,
             verbose=False
         )
@@ -804,18 +813,21 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
             print(f"\nProcessing method: {method}")
             
             if method == 'patchcutout':
+                predictions, labels = ndl.load_mri_data()
+                
                 # Load PatchCutout predictions
-                try:
-                    predictions = load_patchcutout_predictions(
-                        dataset_type='mri', 
-                        run_id=run, 
-                        data_dir=patchcutout_data_dir
-                    )
-                    print(f"Using PatchCutout predictions with shape: {predictions.shape}")
-                except FileNotFoundError as e:
-                    print(f"Warning: {e}")
-                    print("Skipping PatchCutout method for this run.")
-                    continue
+                # try:
+                #     predictions = load_patchcutout_predictions(
+                #         dataset_type='mri', 
+                #         run_id=run, 
+                #         data_dir=patchcutout_data_dir
+                #     )
+                #     print(f"Using PatchCutout predictions with shape: {predictions.shape}")
+                # except FileNotFoundError as e:
+                #     print(f"Warning: {e}")
+                #     print("Skipping PatchCutout method for this run.")
+                    # continue
+                
             elif method == 'patch_drop':
                 # Load patch drop predictions
                 try:
@@ -838,18 +850,19 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
                 
                 # MCal_CE now handles labels internally, no need to request them
                 need_labels = False
-                    
-                result = generate_fractionwise_predictions_from_images(
-                    model, dataloader, n_samples, n_fractions, device, 
-                    cache_dir=os.path.join(save_dir, "cache"), use_cache=use_cache,
-                    use_default_data=use_default_data, return_labels=need_labels
-                )
+                predictions, labels = ndl.load_mri_data()
                 
-                if need_labels:
-                    predictions, target_labels = result
-                else:
-                    predictions = result
-                    target_labels = None
+                # result = generate_fractionwise_predictions_from_images(
+                #     model, dataloader, n_samples, n_fractions, device, 
+                #     cache_dir=os.path.join(save_dir, "cache"), use_cache=use_cache,
+                #     use_default_data=use_default_data, return_labels=need_labels
+                # )
+                
+                # if need_labels:
+                #     predictions, target_labels = result
+                # else:
+                #     predictions = result
+                #     target_labels = None
             
             # Apply transformation
             if method in ['baseline', 'patchcutout', 'patch_drop']:
@@ -869,7 +882,7 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
                     method_kwargs['num_epochs'] = 500  # Reduced for demo
                 
                 transformed_predictions = apply_transform(
-                    predictions, method, device, **method_kwargs
+                    predictions, labels, method, device, **method_kwargs
                 )
             
             # Calculate KL metrics

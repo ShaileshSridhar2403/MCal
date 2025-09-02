@@ -27,7 +27,7 @@ class TemperatureScaling(BaseCalibrator):
     def fit(
         self,
         ablated_probs: torch.Tensor,
-        clean_probs: torch.Tensor,
+        labels: torch.Tensor,
         max_steps: int = 1000,
         lr: float = 0.01,
         verbose: bool = False,
@@ -36,7 +36,7 @@ class TemperatureScaling(BaseCalibrator):
         
         Args:
             ablated_probs: Ablated probability distributions  
-            clean_probs: Clean probability distributions (used as targets)
+            labels: True class labels (integers)
             max_steps: Maximum number of optimization steps
             lr: Learning rate for optimization
             verbose: Whether to show progress bar
@@ -44,7 +44,7 @@ class TemperatureScaling(BaseCalibrator):
         Returns:
             Dictionary containing training statistics
         """
-        self._validate_fit_inputs(ablated_probs, clean_probs)
+        # self._validate_fit_inputs(ablated_probs, labels)
         
         # Convert probabilities back to logits (approximate)
         ablated_logits = torch.log(ablated_probs.clamp(1e-6, 1-1e-6))
@@ -60,7 +60,7 @@ class TemperatureScaling(BaseCalibrator):
         def closure():
             optimizer.zero_grad()
             scaled_logits = ablated_logits / self.temperature
-            loss = criterion(scaled_logits, clean_probs.argmax(dim=1))
+            loss = criterion(scaled_logits, labels)
             loss.backward()
             
             stats["loss"].append(loss.item())

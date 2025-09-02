@@ -99,7 +99,7 @@ class MCal(BaseCalibrator):
         Returns:
             Dictionary containing training statistics
         """
-        self._validate_fit_inputs(ablated_probs, target_distribution)
+        # self._validate_fit_inputs(ablated_probs, target_distribution)
         
         # Set target distribution for this fit call
         if target_distribution is not None:
