@@ -13,6 +13,7 @@ from torchvision import datasets
 import torchvision.transforms as transforms
 
 from .base_loader import VisionDataLoader
+import pdb
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +204,7 @@ class MRILoader(VisionDataLoader):
             kaggle_credentials: Path to kaggle.json file
             **kwargs: Additional arguments
         """
+        print("Downloading MRI Dataset....")
         if kaggle_credentials:
             self._setup_kaggle_credentials(kaggle_credentials)
         
@@ -210,7 +212,7 @@ class MRILoader(VisionDataLoader):
             # Download using Kaggle API
             cmd = "kaggle datasets download -d masoudnickparvar/brain-tumor-mri-dataset"
             result = subprocess.run(cmd.split(), cwd=self.data_dir, capture_output=True, text=True)
-            
+            print(result)
             if result.returncode == 0:
                 # Extract the downloaded zip
                 zip_path = self.data_dir / "brain-tumor-mri-dataset.zip"
@@ -269,8 +271,8 @@ class MRILoader(VisionDataLoader):
             
             train_transform = self.get_transforms("train", train_augmentation, **kwargs)
             train_dataset = datasets.ImageFolder(train_dir, transform=train_transform)
-        
-        # Setup test data
+    
+
         if test_dir is not None:
             if not os.path.isdir(test_dir):
                 logger.info(f"No dataset found at {test_dir}, proceeding to download")
@@ -503,3 +505,45 @@ def get_vision_loader(dataset_name: str, **kwargs) -> VisionDataLoader:
         )
     
     return VISION_LOADERS[dataset_name](**kwargs)
+
+
+def mri_full_setup(
+    data_dir: Optional[Union[str, Path]] = None,
+    train_augmentation: Optional[str] = None,
+    test_augmentation: Optional[str] = None,
+    image_size: int = 224,
+    seed: int = 42,
+    **kwargs
+) -> Tuple[Optional[Dataset], Optional[Dataset]]:
+    """
+    Full setup function for MRI dataset that mimics XAI_Benchmark interface.
+    
+    This function provides a simplified interface for MRI dataset loading
+    that's compatible with existing benchmark scripts.
+    
+    Args:
+        data_dir: Directory to store/load datasets
+        train_augmentation: Training augmentation type (e.g., "PatchCutout", "Cutout")
+        test_augmentation: Test augmentation type
+        image_size: Image size for transforms
+        seed: Random seed
+        **kwargs: Additional arguments passed to transforms
+        
+    Returns:
+        Tuple of (train_dataset, test_dataset)
+    """
+    # Initialize MRI loader
+    loader = MRILoader(
+        data_dir=data_dir,
+        seed=seed,
+        image_size=image_size
+    )
+    
+    # Setup datasets with augmentation
+    train_dataset, test_dataset, _ = loader.setup_dataset(
+        train_augmentation=train_augmentation,
+        test_augmentation=test_augmentation,
+        **kwargs
+    )
+    
+    return train_dataset, test_dataset

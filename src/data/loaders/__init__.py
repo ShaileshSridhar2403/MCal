@@ -8,6 +8,7 @@ from .vision_loaders import (
     ImageNetLoader,
     ImageNetteLoader,
     get_vision_loader,
+    mri_full_setup,
     VISION_LOADERS
 )
 from .language_loaders import (

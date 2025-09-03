@@ -181,7 +181,7 @@ class BaseDataLoader(ABC):
         # Collect all image paths and labels
         paths = []
         labels = []
-        
+        print(parent_dir)
         for class_dir in parent_dir.iterdir():
             if class_dir.is_dir():
                 class_name = class_dir.name

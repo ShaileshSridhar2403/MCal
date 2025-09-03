@@ -11,9 +11,9 @@ from .patch_drop import (
     patch_segment, 
     remove_random_features, 
     remove_mask,
-    get_patch_indices,
-    get_total_patches,
-    create_random_patch_mask
+    # get_patch_indices,
+    # get_total_patches,
+    # create_random_patch_mask
 )
 
 __all__ = [
@@ -32,7 +32,7 @@ __all__ = [
     "patch_segment",
     "remove_random_features",
     "remove_mask",
-    "get_patch_indices",
-    "get_total_patches", 
-    "create_random_patch_mask",
+    # "get_patch_indices",
+    # "get_total_patches", 
+    # "create_random_patch_mask",
 ]
