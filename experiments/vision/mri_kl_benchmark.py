@@ -99,6 +99,21 @@ def load_patchcutout_predictions(dataset_type='mri', run_id=0, data_dir="../../.
     return predictions
 
 
+# def calculate_dataset_mean_pixel_value(data_loader):
+#     """Calculate the mean pixel value across the entire dataset.
+    
+#     Args:
+#         data_loader: PyTorch DataLoader for the dataset
+        
+#     Returns:
+#         float: Mean pixel value across all images in the dataset
+#     """
+#     # TODO: Implement dataset mean pixel calculation
+#     # This should iterate through the data_loader and calculate
+#     # the mean pixel value across all images
+#     pass
+
+
 def load_patch_drop_predictions(dataset_type='mri', run_id=0, data_dir="../../../XAI_Benchmark/dataset_store/model_outputs", fill_value=0):
     """Load pre-computed patch drop predictions from the XAI_Benchmark format."""
     predictions_path = f"{data_dir}/{dataset_type}/patch_drop_fill_{fill_value}/predictions_patch_drop_{run_id}.npy"
@@ -770,7 +785,7 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
     """
     # Default methods - include all calibrators and pre-computed methods
     if methods is None:
-        methods = ['baseline', 'patchcutout', 'patch_drop', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp']
+        methods = ['baseline', 'replace_mean', 'patchcutout', 'patch_drop', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp']
     
     device = torch.device(device)
     
@@ -815,7 +830,11 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
             if method == 'patchcutout':
                 predictions, labels = ndl.load_mri_data(model_type="patchcutout")
 
-                
+            elif method == 'replace_mean':
+                # Load data with mean pixel value replacement
+                # TODO: Calculate dataset mean pixel value first
+                predictions, labels = ndl.load_mri_data(model_type="vanilla", fill_value=0.1847)
+
             elif method == 'patch_drop':
                 # Load patch drop predictions
                 # try:
@@ -854,7 +873,7 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
                 #     target_labels = None
             
             # Apply transformation
-            if method in ['baseline', 'patchcutout', 'patch_drop']:
+            if method in ['baseline', 'replace_mean', 'patchcutout', 'patch_drop']:
                 transformed_predictions = predictions
             else:
                 # Configure method-specific parameters
@@ -978,8 +997,8 @@ def main():
     """Main execution function."""
     parser = argparse.ArgumentParser(description="MRI KL Divergence Benchmark")
     parser.add_argument("--methods", nargs='+', 
-                       default=['baseline', 'patchcutout', 'patch_drop', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp'],
-                       help="Methods to include in benchmark. Available: baseline, patchcutout, patch_drop, mcal, mcal_ce, platt, temperature, logits_sharp, expectation_prob, expectation_onehot, optimized_lambda")
+                       default=['baseline', 'replace_mean', 'patchcutout', 'patch_drop', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp'],
+                       help="Methods to include in benchmark. Available: baseline, replace_mean, patchcutout, patch_drop, mcal, mcal_ce, platt, temperature, logits_sharp, expectation_prob, expectation_onehot, optimized_lambda")
     parser.add_argument("--runs", type=int, default=3, help="Number of runs")
     parser.add_argument("--samples", type=int, default=1000, help="Samples per fraction")
     parser.add_argument("--fractions", type=int, default=16, help="Number of fractions")

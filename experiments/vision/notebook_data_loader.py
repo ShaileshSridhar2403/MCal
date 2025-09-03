@@ -23,7 +23,7 @@ from configs.dataset_configs import get_dataset_config
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-def load_mri_data(model_type = "vanilla"):
+def load_mri_data(model_type = "vanilla",fill_value=0):
     # Get dataset configuration
     mri_config = get_dataset_config('mri')
     num_classes = mri_config['num_classes']
@@ -66,31 +66,12 @@ def load_mri_data(model_type = "vanilla"):
             removal_fraction=removal_fraction,
             random_removal_fraction=False,  # Use exact fraction, not random
             random_dist="binomial",
-            fill_val=0
+            fill_val=fill_value
         )
-        
-        try:
-            return patch_cutout(img_tensor)
-        except RuntimeError as e:
-            # Fallback implementation if PatchCutout fails
-            channels, height, width = img_tensor.shape[-3:]
-            patch_size = 56
-            n_patches_h = height // patch_size
-            n_patches_w = width // patch_size
-            total_patches = n_patches_h * n_patches_w
-            
-            img_copy = img_tensor.clone()
-            patches_to_remove = int(total_patches * removal_fraction)
-            
-            if patches_to_remove > 0:
-                for _ in range(patches_to_remove):
-                    ph = torch.randint(0, n_patches_h, (1,)).item()
-                    pw = torch.randint(0, n_patches_w, (1,)).item()
-                    h_start = ph * patch_size
-                    w_start = pw * patch_size
-                    img_copy[..., h_start:h_start+patch_size, w_start:w_start+patch_size] = 0
-            
-            return img_copy
+        # pdb.set_trace()
+        # t
+        return patch_cutout(img_tensor)
+
 
     # Generate predictions across all ablation fractions
     print("🔮 Generating predictions across all ablation fractions (0/16 to 15/16)...")
@@ -203,35 +184,40 @@ if __name__ == "__main__":
     def apply_patch_cutout_with_fraction(img_tensor, removal_fraction):
         """Apply PatchCutout augmentation with specific removal fraction."""
         patch_cutout = PatchCutout(
-            patch_height=16,
-            patch_width=16,
+            patch_height=56,
+            patch_width=56,
             removal_fraction=removal_fraction,
             random_removal_fraction=False,
             random_dist="binomial",
-            fill_val=0
+            fill_val=0.1847
         )
-        try:
-            return patch_cutout(img_tensor)
-        except RuntimeError:
-            # Fallback implementation
-            channels, height, width = img_tensor.shape[-3:]
-            patch_size = 56
-            n_patches_h = height // patch_size
-            n_patches_w = width // patch_size
-            total_patches = n_patches_h * n_patches_w
+        return patch_cutout(img_tensor)
+
+        # try:
+        #     return patch_cutout(img_tensor)
+        # except RuntimeError as e:
+
+        #     # Fallback implementation
+        #     print("ANTON IS THE BEST")
+        #     pdb.set_trace()
+        #     channels, height, width = img_tensor.shape[-3:]
+        #     patch_size = 56
+        #     n_patches_h = height // patch_size
+        #     n_patches_w = width // patch_size
+        #     total_patches = n_patches_h * n_patches_w
             
-            img_copy = img_tensor.clone()
-            patches_to_remove = int(total_patches * removal_fraction)
+        #     img_copy = img_tensor.clone()
+        #     patches_to_remove = int(total_patches * removal_fraction)
             
-            if patches_to_remove > 0:
-                for _ in range(patches_to_remove):
-                    ph = torch.randint(0, n_patches_h, (1,)).item()
-                    pw = torch.randint(0, n_patches_w, (1,)).item()
-                    h_start = ph * patch_size
-                    w_start = pw * patch_size
-                    img_copy[..., h_start:h_start+patch_size, w_start:w_start+patch_size] = 0
+        #     if patches_to_remove > 0:
+        #         for _ in range(patches_to_remove):
+        #             ph = torch.randint(0, n_patches_h, (1,)).item()
+        #             pw = torch.randint(0, n_patches_w, (1,)).item()
+        #             h_start = ph * patch_size
+        #             w_start = pw * patch_size
+        #             img_copy[..., h_start:h_start+patch_size, w_start:w_start+patch_size] = 0
             
-            return img_copy
+        #     return img_copy
     
     # Create figure with subplots
     fig, axes = plt.subplots(2, 4, figsize=(16, 8))
