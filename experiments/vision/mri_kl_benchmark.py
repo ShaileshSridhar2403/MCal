@@ -813,35 +813,24 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
             print(f"\nProcessing method: {method}")
             
             if method == 'patchcutout':
-                predictions, labels = ndl.load_mri_data()
-                
-                # Load PatchCutout predictions
-                # try:
-                #     predictions = load_patchcutout_predictions(
-                #         dataset_type='mri', 
-                #         run_id=run, 
-                #         data_dir=patchcutout_data_dir
-                #     )
-                #     print(f"Using PatchCutout predictions with shape: {predictions.shape}")
-                # except FileNotFoundError as e:
-                #     print(f"Warning: {e}")
-                #     print("Skipping PatchCutout method for this run.")
-                    # continue
+                predictions, labels = ndl.load_mri_data(model_type="patchcutout")
+
                 
             elif method == 'patch_drop':
                 # Load patch drop predictions
-                try:
-                    predictions = load_patch_drop_predictions(
-                        dataset_type='mri', 
-                        run_id=run, 
-                        data_dir=patchcutout_data_dir,
-                        fill_value=0  # Use 0 as default fill value
-                    )
-                    print(f"Using patch drop predictions with shape: {predictions.shape}")
-                except FileNotFoundError as e:
-                    print(f"Warning: {e}")
-                    print("Skipping patch drop method for this run.")
-                    continue
+                # try:
+                #     predictions = load_patch_drop_predictions(
+                #         dataset_type='mri', 
+                #         run_id=run, 
+                #         data_dir=patchcutout_data_dir,
+                #         fill_value=0  # Use 0 as default fill value
+                #     )
+                #     print(f"Using patch drop predictions with shape: {predictions.shape}")
+                # except FileNotFoundError as e:
+                #     print(f"Warning: {e}")
+                #     print("Skipping patch drop method for this run.")
+                #     continue
+                raise NotImplementedError("Patch Drop method not implemented in this example.")
             else:
                 # Generate baseline predictions from real images for other methods
                 if model is None:
