@@ -38,7 +38,7 @@ DATASET_CONFIGS = {
         'batch_size': 256,
         'num_epochs': 35,  # Based on model name "35e"
         'image_size': 128,  # Based on vit_model_config.py
-        'patch_size': 64,   # Based on model names "ps64"
+        'patch_size': 56,   # Based on model names "ps64"
         'input_shape': (128, 128, 3),
     },
     
@@ -50,7 +50,7 @@ DATASET_CONFIGS = {
         'batch_size': 32,
         'num_epochs': 20,
         'image_size': 224,
-        'patch_size': 64,   # Based on model names "ps64"
+        'patch_size': 56,   # Based on model names "ps64"
         'input_shape': (224, 224, 3),
     },
     
