@@ -25,7 +25,7 @@ MODEL_DICT = {
         "PatchCutout": "vit_timm_patchcutout_chexpert_ps64_83tr75te.pth"
     },
     "breakhis": {
-        "vanilla": "breakhis_vanilla_finetuned.pth",
+        "vanilla": "vit_timm_vanilla_breakhis_ps56_98tr89te.pth",
         "PatchCutout": "vit_timm_PatchCutout_breakhis_ps56_98tr85te.pth"
     },
     "imagenet": {
