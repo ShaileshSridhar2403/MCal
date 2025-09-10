@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-BreakHis KL Divergence Benchmark - MCal Implementation
+BreakHis KL Divergence Benchmark - MCal Implementation (Version 2)
 
 Similar to experiments/get_benchmarks.py, this script provides configurable methods
-for comparing KL divergence results with different calibration transforms for BreakHis dataset.
+for comparing KL divergence results with different calibration transforms.
 """
 
 import sys
@@ -19,34 +19,41 @@ from tabulate import tabulate
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from torchvision import datasets
+import pdb
+import breakhis_data_setup as bds
+from vit_patch_drop_outputs import get_patch_drop_outputs
 
 # Add MCal to path (file is now in experiments/vision/)
 mcal_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(mcal_root))
 sys.path.insert(0, str(mcal_root / "configs"))
 sys.path.insert(0, str(mcal_root / "src"))
+sys.path.insert(0, str(mcal_root / "experiments"))
 
-# Add XAI_Benchmark to path for data loading and augmentation
-xai_root = mcal_root.parent / "XAI_Benchmark"
-sys.path.insert(0, str(xai_root))
-sys.path.insert(0, str(xai_root / "augmentation"))
+# No need for XAI_Benchmark paths since we're using MCal's own loaders
 
 from configs.model_dict import get_model_path
 from configs.dataset_configs import get_dataset_config
 import timm
 
-# Import XAI_Benchmark augmentation utilities
-from PatchCutout import PatchCutout
+# Import MCal data loaders
+from src.data.loaders import BreakHisLoader
+
+# Import augmentation utilities from MCal
+from src.data.augmentation.patch_cutout import PatchCutout
 
 # Import utils directly to avoid circular imports
-sys.path.insert(0, str(mcal_root / "src" / "utils"))
-from optimization import get_expectation, make_one_hot, kl_divergence
+from src.utils.optimization import get_expectation, make_one_hot, kl_divergence
 
 # Import calibrator modules
-from calibrators import MCal, PlattCalibrator, TemperatureScaling
+from src.calibrators.mcal import MCal
+from src.calibrators.mcal_ce import MCal_CE
+from src.calibrators.platt import PlattCalibrator
+from src.calibrators.temperature import TemperatureScaling
 
 # Import transform modules for backward compatibility  
-from transforms.lambda_transforms import ExpectationLambdaTransform, OptimizedLambdaTransform
+from src.transforms.lambda_transforms import ExpectationLambdaTransform, OptimizedLambdaTransform
+from src.transforms.logits import LogitsSharpTransform
 
 
 def load_breakhis_model(augmentation='vanilla', device=None):
@@ -62,7 +69,7 @@ def load_breakhis_model(augmentation='vanilla', device=None):
     try:
         state_dict = torch.load(model_path, map_location='cpu', weights_only=True)
         actual_num_classes = state_dict['head.weight'].shape[0]
-        print(f"Model has {actual_num_classes} classes (config says {config['num_classes']})")
+        print(f"BreakHis model has {actual_num_classes} classes (config says {config['num_classes']})")
     except:
         actual_num_classes = config['num_classes']
     
@@ -75,138 +82,6 @@ def load_breakhis_model(augmentation='vanilla', device=None):
     return model, actual_num_classes
 
 
-def load_patchcutout_predictions(dataset_type='breakhis', run_id=0, data_dir="../../../XAI_Benchmark/dataset_store/model_outputs"):
-    """Load pre-computed PatchCutout predictions from the XAI_Benchmark format."""
-    predictions_path = f"{data_dir}/{dataset_type}/PatchCutout/predictions_augmented_train_{run_id}.npy"
-    
-    if not os.path.exists(predictions_path):
-        raise FileNotFoundError(f"PatchCutout predictions not found at {predictions_path}. "
-                              f"Please run XAI_Benchmark generation first with PatchCutout models.")
-    
-    print(f"Loading PatchCutout predictions from {predictions_path}")
-    predictions = np.load(predictions_path)
-    print(f"Loaded PatchCutout predictions with shape: {predictions.shape}")
-    
-    return predictions
-
-
-def load_patch_drop_predictions(dataset_type='breakhis', run_id=0, data_dir="../../../XAI_Benchmark/dataset_store/model_outputs", fill_value=0):
-    """Load pre-computed patch drop predictions from the XAI_Benchmark format."""
-    predictions_path = f"{data_dir}/{dataset_type}/patch_drop_fill_{fill_value}/predictions_patch_drop_{run_id}.npy"
-    
-    if not os.path.exists(predictions_path):
-        raise FileNotFoundError(f"Patch drop predictions not found at {predictions_path}. "
-                              f"Please run XAI_Benchmark generation first with patch drop models.")
-    
-    print(f"Loading patch drop predictions from {predictions_path}")
-    predictions = np.load(predictions_path)
-    print(f"Loaded patch drop predictions with shape: {predictions.shape}")
-    
-    return predictions
-
-
-def load_breakhis_dataset(data_dir="/home/shai2403/XAIbench/XAI_Benchmark/BreakHisTraining", batch_size=32):
-    """Load BreakHis dataset from XAI_Benchmark directory."""
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-    ])
-    
-    dataset = datasets.ImageFolder(data_dir, transform=transform)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4)
-    
-    print(f"Loaded BreakHis dataset with {len(dataset)} images, {len(dataset.classes)} classes")
-    print(f"Classes: {dataset.classes}")
-    
-    return dataloader, dataset.classes
-
-
-def generate_fractionwise_predictions_from_images(model, dataloader, n_samples=1000, n_fractions=16, 
-                                                 device=None, cache_dir="./cache", use_cache=True):
-    """Generate fractionwise predictions using real BreakHis images with PatchCutout augmentation."""
-    if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    # Create cache directory
-    os.makedirs(cache_dir, exist_ok=True)
-    cache_file = os.path.join(cache_dir, f"breakhis_fractionwise_predictions_{n_samples}_{n_fractions}.npy")
-    
-    # Check if cached predictions exist
-    if use_cache and os.path.exists(cache_file):
-        print(f"Loading cached predictions from {cache_file}")
-        return np.load(cache_file)
-    
-    print(f"Generating {n_fractions} fractions with {n_samples} samples each using real BreakHis images...")
-    
-    # Get number of classes from model
-    num_classes = model.head.out_features
-    
-    # Initialize output array: (n_fractions, n_samples, n_classes)
-    all_predictions = np.zeros((n_fractions, n_samples, num_classes))
-    
-    # Define fractions (0 to 1, where 0 = no removal, 1 = full removal)
-    fractions = np.linspace(0, 1, n_fractions)
-    
-    # Create iterator over dataloader that can be reused
-    def get_batch_iterator():
-        while True:
-            for batch in dataloader:
-                images, _ = batch
-                for img in images:
-                    yield img
-    
-    batch_iterator = get_batch_iterator()
-    
-    with torch.no_grad():
-        for fraction_idx, removal_fraction in enumerate(tqdm(fractions, desc="Processing fractions")):
-            # Create PatchCutout transform for this fraction
-            patch_cutout = PatchCutout(
-                patch_height=56,  # BreakHis uses patch size 56
-                patch_width=56,
-                removal_fraction=removal_fraction,
-                random_removal_fraction=False,
-                fill_val=(0, 0, 0)  # Black fill for removed patches
-            )
-            
-            fraction_predictions = []
-            samples_collected = 0
-            
-            # Generate predictions for this fraction
-            while samples_collected < n_samples:
-                try:
-                    # Get next image
-                    original_img = next(batch_iterator)
-                    
-                    # Apply patch cutout augmentation
-                    augmented_img = patch_cutout(original_img)
-                    
-                    # Add batch dimension and move to device
-                    img_batch = augmented_img.unsqueeze(0).to(device)
-                    
-                    # Forward pass
-                    logits = model(img_batch)
-                    probabilities = F.softmax(logits, dim=1)
-                    
-                    # Store prediction
-                    fraction_predictions.append(probabilities.cpu().numpy()[0])
-                    samples_collected += 1
-                    
-                except StopIteration:
-                    # Reset iterator if we run out of data
-                    batch_iterator = get_batch_iterator()
-                    continue
-            
-            # Convert to numpy array and store
-            all_predictions[fraction_idx] = np.array(fraction_predictions)
-            
-            print(f"Fraction {fraction_idx+1}/{n_fractions} (removal={removal_fraction:.3f}) - Generated {samples_collected} predictions")
-    
-    # Save to cache
-    if use_cache:
-        print(f"Saving predictions to cache: {cache_file}")
-        np.save(cache_file, all_predictions)
-    
-    return all_predictions
 
 
 def calculate_kl_metrics(outputs, device=None):
@@ -236,6 +111,7 @@ def calculate_kl_metrics(outputs, device=None):
         kl_values_argmax.append(kl_argmax)
         kl_values_prob.append(kl_prob)
     
+        print(f"Fraction {fraction}/{n_fractions} - KL Argmax: {kl_argmax:.6f}, KL Prob: {kl_prob:.6f}")
     # Calculate averages
     avg_kl_argmax = np.mean(kl_values_argmax)
     avg_kl_prob = np.mean(kl_values_prob)
@@ -248,7 +124,7 @@ def calculate_kl_metrics(outputs, device=None):
     }
 
 
-def apply_transform(outputs, method, device=None, **kwargs):
+def apply_transform(outputs, labels,method, device=None, **kwargs):
     """Apply a transformation method to the outputs."""
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -263,18 +139,21 @@ def apply_transform(outputs, method, device=None, **kwargs):
         # PatchCutout uses pre-trained model predictions, no additional transformation needed
         return outputs
     
-    elif method == 'patch_drop':
-        # Patch drop uses pre-generated predictions, no additional transformation needed
+    elif method == 'arch_mod':
+        # Arch mod uses pre-generated predictions, no additional transformation needed
         return outputs
     
     elif method == 'mcal':
         return apply_mcal_calibrator(outputs, device, **kwargs)
     
+    elif method == 'mcal_ce':
+        return apply_mcal_ce_calibrator(outputs,labels, device, **kwargs)
+    
     elif method == 'platt':
-        return apply_platt_calibrator(outputs, device, **kwargs)
+        return apply_platt_calibrator(outputs, labels, device, **kwargs)
     
     elif method == 'temperature':
-        return apply_temperature_calibrator(outputs, device, **kwargs)
+        return apply_temperature_calibrator(outputs, labels, device, **kwargs)
     
     # Keep the old transform methods for backward compatibility
     elif method == 'expectation_prob':
@@ -285,6 +164,9 @@ def apply_transform(outputs, method, device=None, **kwargs):
     
     elif method == 'optimized_lambda':
         return apply_optimized_lambda_transform(outputs, device, **kwargs)
+    
+    elif method == 'logits_sharp':
+        return apply_logits_sharp_transform(outputs, device, **kwargs)
     
     else:
         raise ValueError(f"Unknown transform method: {method}")
@@ -302,7 +184,7 @@ def apply_expectation_prob_transform(outputs, device):
     
     # Apply transform fraction by fraction using the fitted parameters
     n_fractions, n_samples, n_classes = outputs.shape
-    transformed_outputs = np.zeros_like(outputs)
+    transformed_outputs = np.zeros_like(outputs.detach().cpu().numpy())
     
     for fraction in tqdm(range(n_fractions), desc="Applying expectation prob transform"):
         fraction_preds = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
@@ -334,7 +216,7 @@ def apply_expectation_onehot_transform(outputs, device):
     
     # Apply transform fraction by fraction using the fitted parameters
     n_fractions, n_samples, n_classes = outputs.shape
-    transformed_outputs = np.zeros_like(outputs)
+    transformed_outputs = np.zeros_like(outputs.detach().cpu().numpy())
     
     for fraction in tqdm(range(n_fractions), desc="Applying expectation onehot transform"):
         fraction_preds = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
@@ -366,7 +248,7 @@ def apply_optimized_lambda_transform(outputs, device, num_epochs=1000):
     
     # Apply transform fraction by fraction using the fitted parameters
     n_fractions, n_samples, n_classes = outputs.shape
-    transformed_outputs = np.zeros_like(outputs)
+    transformed_outputs = np.zeros_like(outputs.detach().cpu().numpy())
     
     for fraction in tqdm(range(n_fractions), desc="Applying optimized lambda transform"):
         fraction_preds = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
@@ -386,78 +268,157 @@ def apply_optimized_lambda_transform(outputs, device, num_epochs=1000):
     return transformed_outputs
 
 
-def apply_mcal_calibrator(outputs, device, kappa=10.0, max_steps=1000, **kwargs):
-    """Apply MCal calibrator using clean MCal implementation."""
-    n_fractions, n_samples, n_classes = outputs.shape
-    transformed_outputs = np.zeros_like(outputs)
+def apply_logits_sharp_transform(outputs, device, num_epochs=1000, **kwargs):
+    """Apply LogitsSharp transform using MCal module."""
+    # Create temporary file for fitting
+    temp_path = "/tmp/breakhis_temp_predictions_logits_sharp.npy"
+    np.save(temp_path, outputs)
     
-    for fraction in tqdm(range(n_fractions), desc="Applying MCal calibrator"):
-        # For calibration, we need ablated (corrupted) and clean probabilities
-        # Use the baseline (fraction 0) as "clean" and current fraction as "ablated"
-        clean_probs = torch.tensor(outputs[0], dtype=torch.float32, device=device)  # baseline
+    # Create and fit transform
+    transform = LogitsSharpTransform(device=device)
+    transform.fit(temp_path, num_epochs=num_epochs)
+    
+    # Apply transform fraction by fraction using the fitted parameters  
+    n_fractions, n_samples, n_classes = outputs.shape
+    transformed_outputs = np.zeros_like(outputs.detach().cpu().numpy())
+
+    for fraction in tqdm(range(n_fractions), desc="Applying logits sharp transform"):
+        fraction_preds = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
+        
+        # Apply logits sharp transformation for this fraction
+        transformed_probs = transform.transform(fraction_preds, fraction_idx=fraction)
+        transformed_outputs[fraction] = transformed_probs.cpu().numpy()
+    
+    # Clean up
+    if os.path.exists(temp_path):
+        os.remove(temp_path)
+    
+    return transformed_outputs
+
+
+def apply_mcal_calibrator(outputs, device, kappa=4.0, max_steps=10000, **kwargs):
+    """Apply MCal calibrator using uniform target distribution - single training like LogitsSharp."""
+    # pdb.set_trace()
+    n_fractions, n_samples, n_classes = outputs.shape
+    transformed_outputs = np.zeros_like(outputs.detach().cpu().numpy())
+    
+    # Create uniform target distribution
+    uniform_target = torch.ones(n_classes, device=device) / n_classes
+    
+    # Train one MCal calibrator per fraction (like LogitsSharp trains per fraction)
+    calibrators = []
+    
+    for fraction in tqdm(range(n_fractions), desc="Training MCal calibrators"):
+        # Use current fraction as ablated probabilities
         ablated_probs = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
         
-        # Create and fit MCal calibrator
-        calibrator = MCal(num_classes=n_classes)
+        # Create and fit MCal calibrator with uniform target
+        calibrator = MCal(num_classes=n_classes, target_distribution=uniform_target)
         calibrator.to(device)
+        # pdb.set_trace()
         calibrator.fit(
             ablated_probs=ablated_probs,
-            clean_probs=clean_probs,
+            target_distribution=uniform_target,
             kappa=kappa,
             max_steps=max_steps,
-            verbose=False
+            lr=1e-1,  # Explicitly set lr to match LogitsSharp
+            verbose=False  # Disable verbose for cleaner output
         )
-        
-        # Apply calibration using forward method
-        calibrated_probs = calibrator.forward(ablated_probs)
+        calibrators.append(calibrator)
+    
+    # Apply calibration using trained calibrators
+    for fraction in tqdm(range(n_fractions), desc="Applying MCal calibration"):
+        ablated_probs = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
+        calibrated_probs = calibrators[fraction].forward(ablated_probs)
         transformed_outputs[fraction] = calibrated_probs.detach().cpu().numpy()
     
     return transformed_outputs
 
 
-def apply_platt_calibrator(outputs, device, max_steps=1000, **kwargs):
-    """Apply Platt scaling calibrator."""
-    n_fractions, n_samples, n_classes = outputs.shape
-    transformed_outputs = np.zeros_like(outputs)
+def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=5000, head_type="linear", experiment_id="breakhis_experiment", **kwargs):
+    """Apply MCal_CE calibrator using cross-entropy loss with target labels from 0th index (unablated predictions)."""
+    # pdb.set_trace()
+    # outputs_tensor, target_labels = ndl.load_mri_data()
+
+    n_fractions, n_samples, n_classes = outputs_tensor.shape
+    transformed_outputs = np.zeros_like(outputs_tensor.detach().cpu().numpy())
+
     
-    for fraction in tqdm(range(n_fractions), desc="Applying Platt calibrator"):
-        # Use baseline as clean and current fraction as ablated
-        clean_probs = torch.tensor(outputs[0], dtype=torch.float32, device=device)
-        ablated_probs = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
-        
-        # Create and fit Platt calibrator
-        calibrator = PlattCalibrator(num_classes=n_classes)
+    for fraction in tqdm(range(n_fractions), desc="Applying MCal_CE calibrator"):
+        # Create and fit MCal_CE calibrator
+        calibrator = MCal_CE(num_classes=n_classes, head_type=head_type)
         calibrator.to(device)
         calibrator.fit(
-            ablated_probs=ablated_probs,
-            clean_probs=clean_probs,
+            ablated_probs=outputs_tensor[fraction],  # Pass current fraction (2D)
+            target_labels=target_labels,  # Use target labels from 0th index
             max_steps=max_steps,
-            verbose=False
+            lr=1e-3,
+            verbose=True,  # Enable verbose output to match MCal behavior
+            fraction=fraction,  # Pass current fraction number
+            experiment_id=experiment_id  # Pass experiment identifier
         )
         
         # Apply calibration using forward method
+        calibrated_probs = calibrator.forward(outputs_tensor[fraction])
+        transformed_outputs[fraction] = calibrated_probs.detach().cpu().numpy()
+    
+    # Combine all fraction results into a single JSON file
+    print(f"\n=== Combining MCal_CE results for experiment: {experiment_id} ===")
+    combined_file = MCal_CE.combine_fraction_results(experiment_id, cleanup_temp_files=True)
+    if combined_file:
+        print(f"All MCal_CE results combined and saved to: {combined_file}")
+    else:
+        print("No temporary files found to combine!")
+    
+    return transformed_outputs
+
+
+def apply_platt_calibrator(outputs, labels, device, max_steps=1000, **kwargs):
+    """Apply Platt scaling calibrator fitted on fraction 0 (unablated inputs)."""
+    n_fractions, n_samples, n_classes = outputs.shape
+    transformed_outputs = np.zeros_like(outputs.detach().cpu().numpy())
+    
+    # Convert labels to tensor
+    labels_tensor = torch.tensor(labels, dtype=torch.long, device=device)
+    
+    # Fit calibrator only on fraction 0 (unablated inputs)
+    unablated_probs = torch.tensor(outputs[0], dtype=torch.float32, device=device)
+    calibrator = PlattCalibrator(num_classes=n_classes)
+    calibrator.to(device)
+    calibrator.fit(
+        ablated_probs=unablated_probs,
+        labels=labels_tensor,
+        max_steps=max_steps,
+        verbose=False
+    )
+    
+    # Apply the fitted calibrator to all fractions
+    for fraction in tqdm(range(n_fractions), desc="Applying Platt calibrator"):
+        ablated_probs = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
         calibrated_probs = calibrator.forward(ablated_probs)
         transformed_outputs[fraction] = calibrated_probs.detach().cpu().numpy()
     
     return transformed_outputs
 
 
-def apply_temperature_calibrator(outputs, device, max_steps=1000, **kwargs):
-    """Apply temperature scaling calibrator."""
+def apply_temperature_calibrator(outputs, labels, device, max_steps=1000, **kwargs):
+    """Apply temperature scaling calibrator with true labels."""
     n_fractions, n_samples, n_classes = outputs.shape
-    transformed_outputs = np.zeros_like(outputs)
+    transformed_outputs = np.zeros_like(outputs.detach().cpu().numpy())
+    
+    # Convert labels to tensor
+    labels_tensor = torch.tensor(labels, dtype=torch.long, device=device)
     
     for fraction in tqdm(range(n_fractions), desc="Applying Temperature calibrator"):
-        # Use baseline as clean and current fraction as ablated
-        clean_probs = torch.tensor(outputs[0], dtype=torch.float32, device=device)
+        # Use current fraction as ablated probabilities
         ablated_probs = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
         
-        # Create and fit temperature scaling calibrator
+        # Create and fit temperature scaling calibrator with true labels
         calibrator = TemperatureScaling(num_classes=n_classes)
         calibrator.to(device)
         calibrator.fit(
             ablated_probs=ablated_probs,
-            clean_probs=clean_probs,
+            labels=labels_tensor,
             max_steps=max_steps,
             verbose=False
         )
@@ -555,15 +516,16 @@ def build_kl_comparison_table(aggregated_results, include_methods=None):
     method_names = {
         'baseline': "Original",
         'patchcutout': "PatchCutout-trained Model",
-        'patch_drop': "Patch Dropping",
+        'arch_mod': "Arch Mod",
         'mcal': "MCal (Vector Scaling)",
+        'mcal_ce': "MCal_CE (Cross-Entropy)",
         'platt': "Platt Scaling",
         'temperature': "Temperature Scaling",
+        'logits_sharp': "Logits Sharp Transform",
         # Keep old transform names for backward compatibility
         'expectation_prob': "Expectation Probability Transform",
         'expectation_onehot': "Expectation One-hot Transform", 
-        'optimized_lambda': "Optimized Lambda Transform",
-        'logits_sharp': "Logits Sharp Transform"
+        'optimized_lambda': "Optimized Lambda Transform"
     }
     
     # Add baseline if available
@@ -598,7 +560,7 @@ def build_kl_comparison_table(aggregated_results, include_methods=None):
 
 def process_breakhis_dataset(methods=None, device="cuda", save_dir="./results", n_runs=3, 
                        n_samples=1000, n_fractions=16, overwrite=False, use_cache=True,
-                       patchcutout_data_dir="../../../XAI_Benchmark/dataset_store/model_outputs"):
+                       patchcutout_data_dir="./dataset_store/model_outputs", use_default_data=True):
     """
     Process BreakHis dataset and generate benchmarks with multiple runs.
     
@@ -612,10 +574,11 @@ def process_breakhis_dataset(methods=None, device="cuda", save_dir="./results", 
         overwrite (bool): Whether to overwrite existing results
         use_cache (bool): Whether to use cached predictions for vanilla model
         patchcutout_data_dir (str): Directory containing PatchCutout predictions
+        use_default_data (bool): Whether to use default BreakHis data
     """
     # Default methods - include all calibrators and pre-computed methods
     if methods is None:
-        methods = ['baseline', 'patchcutout', 'patch_drop', 'mcal', 'platt', 'temperature']
+        methods = ['baseline', 'replace_mean', 'patchcutout', 'arch_mod', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp']
     
     device = torch.device(device)
     
@@ -634,16 +597,15 @@ def process_breakhis_dataset(methods=None, device="cuda", save_dir="./results", 
     
     # Load BreakHis model (only needed for methods that aren't pre-computed)
     model, num_classes, dataloader, class_names = None, None, None, None
-    precomputed_methods = {'patchcutout', 'patch_drop'}
+    precomputed_methods = {'patchcutout', 'arch_mod'}
     
     if any(method not in precomputed_methods for method in methods):
         print("\nLoading BreakHis model...")
         model, num_classes = load_breakhis_model('vanilla', device)
-        print(f"Loaded model with {num_classes} classes")
+        print(f"Loaded BreakHis model with {num_classes} classes")
         
-        # Load BreakHis dataset
-        print("\nLoading BreakHis dataset...")
-        dataloader, class_names = load_breakhis_dataset()
+        # Load BreakHis dataset using our updated loader
+        print("\nLoading BreakHis dataset using MCal loader...")
         print(f"Dataset classes: {class_names}")
     
     # Initialize results storage
@@ -658,58 +620,58 @@ def process_breakhis_dataset(methods=None, device="cuda", save_dir="./results", 
             print(f"\nProcessing method: {method}")
             
             if method == 'patchcutout':
-                # Load PatchCutout predictions
-                try:
-                    predictions = load_patchcutout_predictions(
-                        dataset_type='breakhis', 
-                        run_id=run, 
-                        data_dir=patchcutout_data_dir
-                    )
-                    print(f"Using PatchCutout predictions with shape: {predictions.shape}")
-                except FileNotFoundError as e:
-                    print(f"Warning: {e}")
-                    print("Skipping PatchCutout method for this run.")
-                    continue
-            elif method == 'patch_drop':
-                # Load patch drop predictions
-                try:
-                    predictions = load_patch_drop_predictions(
-                        dataset_type='breakhis', 
-                        run_id=run, 
-                        data_dir=patchcutout_data_dir,
-                        fill_value=0  # Use 0 as default fill value
-                    )
-                    print(f"Using patch drop predictions with shape: {predictions.shape}")
-                except FileNotFoundError as e:
-                    print(f"Warning: {e}")
-                    print("Skipping patch drop method for this run.")
-                    continue
+                predictions, labels = bds.load_breakhis_data(model_type="patchcutout")
+
+            elif method == 'replace_mean':
+                # Load data with mean pixel value replacement
+                # TODO: Calculate dataset mean pixel value first for BreakHis
+                predictions, labels = bds.load_breakhis_data(model_type="vanilla", fill_value=(0.781442, 0.633373, 0.751818))
+
+            elif method == 'arch_mod':
+
+                predictions,labels = get_patch_drop_outputs("breakhis", device=device, batch_size=32)
+               
             else:
                 # Generate baseline predictions from real images for other methods
                 if model is None:
-                    print("Error: Model not loaded for non-precomputed methods")
+                    print("Error: Model not loaded for non-PatchCutout methods")
                     continue
-                    
-                predictions = generate_fractionwise_predictions_from_images(
-                    model, dataloader, n_samples, n_fractions, device, 
-                    cache_dir=os.path.join(save_dir, "cache"), use_cache=use_cache
-                )
+                
+                # MCal_CE now handles labels internally, no need to request them
+                need_labels = False
+                predictions, labels = bds.load_breakhis_data()
+                
+                # result = generate_fractionwise_predictions_from_images(
+                #     model, dataloader, n_samples, n_fractions, device, 
+                #     cache_dir=os.path.join(save_dir, "cache"), use_cache=use_cache,
+                #     use_default_data=use_default_data, return_labels=need_labels
+                # )
+                
+                # if need_labels:
+                #     predictions, target_labels = result
+                # else:
+                #     predictions = result
+                #     target_labels = None
             
             # Apply transformation
-            if method in ['baseline', 'patchcutout', 'patch_drop']:
+            if method in ['baseline', 'replace_mean', 'patchcutout', 'arch_mod']:
                 transformed_predictions = predictions
             else:
                 # Configure method-specific parameters
                 method_kwargs = {}
-                if method in ['mcal', 'platt', 'temperature']:
-                    method_kwargs['max_steps'] = 1000  # Calibrator optimization steps
+                if method in ['mcal', 'mcal_ce', 'platt', 'temperature']:
+                    method_kwargs['max_steps'] = 1000  # Calibrator optimization steps (match MCal default for full convergence)
                 elif method == 'mcal':
                     method_kwargs['kappa'] = 10.0  # Sharpening parameter for MCal
+                elif method == 'mcal_ce':
+                    method_kwargs['max_steps'] = 5000  # More steps for cross-entropy training
+                    method_kwargs['head_type'] = 'linear'  # Use linear head by default
+                    # MCal_CE now handles target labels internally from 0th index predictions
                 elif method == 'optimized_lambda':
                     method_kwargs['num_epochs'] = 500  # Reduced for demo
                 
                 transformed_predictions = apply_transform(
-                    predictions, method, device, **method_kwargs
+                    predictions, labels, method, device, **method_kwargs
                 )
             
             # Calculate KL metrics
@@ -765,12 +727,60 @@ def convert_to_json_serializable(obj):
         return obj
 
 
+def test_breakhis_data_generation_consistency():
+    """Test that MCal BreakHis data generation works correctly."""
+    print("Testing BreakHis data generation consistency...")
+    
+    try:
+        # Test basic dataset loading
+        print("1. Testing basic dataset loading...")
+        from breakhis_data_setup import BreakHis_full_setup
+        train_dataset, test_dataset = BreakHis_full_setup()
+        print(f"   Train dataset: {len(train_dataset) if train_dataset else 'None'} samples")
+        print(f"   Test dataset: {len(test_dataset) if test_dataset else 'None'} samples")
+        
+        # Test with PatchCutout augmentation
+        print("2. Testing PatchCutout augmentation...")
+        train_aug_dataset, test_aug_dataset = BreakHis_full_setup(
+            train_augmentation="PatchCutout",
+            removal_fraction=0.5,
+            patch_size=56,
+            fill_val=0
+        )
+        print(f"   Train dataset (with PatchCutout): {len(train_aug_dataset) if train_aug_dataset else 'None'} samples")
+        print(f"   Test dataset (with PatchCutout): {len(test_aug_dataset) if test_aug_dataset else 'None'} samples")
+        
+        # Test with Cutout augmentation  
+        print("3. Testing Cutout augmentation...")
+        train_cutout_dataset, test_cutout_dataset = BreakHis_full_setup(
+            train_augmentation="Cutout"
+        )
+        print(f"   Train dataset (with Cutout): {len(train_cutout_dataset) if train_cutout_dataset else 'None'} samples")
+        print(f"   Test dataset (with Cutout): {len(test_cutout_dataset) if test_cutout_dataset else 'None'} samples")
+        
+        # Check class consistency
+        if train_dataset and test_dataset:
+            print("4. Checking class consistency...")
+            print(f"   Train classes: {train_dataset.classes}")
+            print(f"   Test classes: {test_dataset.classes}")
+            print(f"   Classes match: {train_dataset.classes == test_dataset.classes}")
+        
+        print("\n✓ BreakHis data generation consistency test completed successfully!")
+        return True
+        
+    except Exception as e:
+        print(f"\n✗ BreakHis data generation consistency test failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def main():
     """Main execution function."""
     parser = argparse.ArgumentParser(description="BreakHis KL Divergence Benchmark")
     parser.add_argument("--methods", nargs='+', 
-                       default=['baseline', 'patchcutout', 'patch_drop', 'mcal', 'platt', 'temperature'],
-                       help="Methods to include in benchmark. Available: baseline, patchcutout, patch_drop, mcal, platt, temperature, expectation_prob, expectation_onehot, optimized_lambda")
+                       default=['baseline', 'replace_mean', 'patchcutout', 'arch_mod', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp'],
+                       help="Methods to include in benchmark. Available: baseline, replace_mean, patchcutout, arch_mod, mcal, mcal_ce, platt, temperature, logits_sharp, expectation_prob, expectation_onehot, optimized_lambda")
     parser.add_argument("--runs", type=int, default=3, help="Number of runs")
     parser.add_argument("--samples", type=int, default=1000, help="Samples per fraction")
     parser.add_argument("--fractions", type=int, default=16, help="Number of fractions")
@@ -780,28 +790,45 @@ def main():
                        help="Directory containing PatchCutout predictions from XAI_Benchmark")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing results")
     parser.add_argument("--no-cache", action="store_true", help="Disable caching of generated predictions")
+    parser.add_argument("--no-default-data", action="store_true", help="Disable use of default BreakHis data")
+    parser.add_argument("--test-data-consistency", action="store_true", 
+                       help="Test that BreakHis data generation works correctly")
     
     args = parser.parse_args()
+    
+    # Run data consistency test if requested
+    if args.test_data_consistency:
+        print("Running BreakHis data generation consistency test...")
+        success = test_breakhis_data_generation_consistency()
+        if success:
+            print("✓ Data generation consistency test passed!")
+        else:
+            print("✗ Data generation consistency test failed!")
+            sys.exit(1)
+        return
     
     # Set device
     device = args.device if torch.cuda.is_available() or args.device == "cpu" else "cpu"
     print(f"Using device: {device}")
     
+    # pdb.set_trace()
     # Run benchmark
     aggregated_results = process_breakhis_dataset(
         methods=args.methods,
         device=device,
         save_dir=args.save_dir,
         n_runs=args.runs,
-        n_samples=args.samples,
+        n_samples=args.samples, 
         n_fractions=args.fractions,
         overwrite=args.overwrite,
         use_cache=not args.no_cache,
-        patchcutout_data_dir=args.patchcutout_data_dir
+        patchcutout_data_dir=args.patchcutout_data_dir,
+        use_default_data=not args.no_default_data
     )
     
-    print("\nBenchmark completed!")
+    print("\nBenchmark completed! YAY!")
 
 
 if __name__ == "__main__":
+    # pdb.set_trace()
     main()
