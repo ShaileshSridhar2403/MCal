@@ -630,9 +630,8 @@ def process_chexpert_dataset(methods=None, device="cuda", save_dir="./results", 
 
             elif method == 'replace_mean':
                 # Load data with mean pixel value replacement
-                # TODO: Calculate dataset mean pixel value first
-                # predictions, labels = ndl.load_mri_data(model_type="vanilla", fill_value=0.1847)
-                predictions, labels = cds.load_chexpert_data(model_type="replace_mean")
+                predictions, labels = cds.load_chexpert_data(model_type="vanilla", fill_value=0.4920)
+
 
             elif method == 'arch_mod':
 
@@ -647,17 +646,7 @@ def process_chexpert_dataset(methods=None, device="cuda", save_dir="./results", 
                 # MCal_CE now handles labels internally, no need to request them
                 need_labels = False
                 predictions, labels = cds.load_chexpert_data()
-                # result = generate_fractionwise_predictions_from_images(
-                #     model, dataloader, n_samples, n_fractions, device, 
-                #     cache_dir=os.path.join(save_dir, "cache"), use_cache=use_cache,
-                #     use_default_data=use_default_data, return_labels=need_labels
-                # )
-                
-                # if need_labels:
-                #     predictions, target_labels = result
-                # else:
-                #     predictions = result
-                #     target_labels = None
+           
             
             # Apply transformation
             if method in ['baseline', 'replace_mean', 'patchcutout', 'arch_mod']:
