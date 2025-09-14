@@ -1,12 +1,10 @@
 import os
 import sys
 import torch
-import numpy as np
+import torch.nn.functional as F
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 import pdb
-from scipy.special import kl_div
 from pathlib import Path
 
 sys.path.append(os.path.abspath('.'))
@@ -19,47 +17,131 @@ sys.path.append(str(project_root))
 # Import required modules
 from vit_patch_drop.src.models.load_trained_weights import load_vit_model, create_patch_mask
 from configs.model_dict import model_dict, get_model_path
-from src.data.loaders import MRILoader
+from src.data.loaders import MRILoader, BreakHisLoader, ChexPertLoader
 
 
 
 
-def get_patch_drop_outputs(dataset_name, device, batch_size=32):
+def get_patch_drop_outputs(dataset_name, device, batch_size=32, num_classes=None):
     """
     Get model outputs for a dataset with varying levels of patch dropping.
     
     Args:
-        dataset: The dataset to process
+        dataset_name: Name of the dataset ('mri', 'breakhis', 'chexpert')
         device: Device to run inference on
         batch_size: Batch size for DataLoader
+        num_classes: Number of classes (auto-determined if None)
         
     Returns:
         predictions, true_labels: Tensors containing model predictions and true labels
 
     """
+    
+    # Determine number of classes based on dataset
+    if num_classes is None:
+        if dataset_name == "mri":
+            num_classes = 4
+        elif dataset_name == "breakhis":
+            num_classes = 8
+        elif dataset_name == "chexpert":
+            num_classes = 2  # Binary classification for cardiomegaly
+        else:
+            raise ValueError(f"Unknown dataset {dataset_name}. Please specify num_classes.")
 
     weights_path = get_model_path(dataset_name, "vanilla")
-    model, device = load_vit_model(weights_path, num_classes=4, device=device)
-        
+    model, device = load_vit_model(weights_path, num_classes=num_classes, device=device)
+
     if model is None:
         print(f"Failed to load model ")
         raise ValueError("Model loading failed")
     
     # 2. Load dataset
-    if dataset_name == "mri":
-        data_dir = project_root / "data"
-        mri_loader = MRILoader(data_dir=data_dir)
-
-        # Load clean test dataset (no augmentation)
-        _, test_dataset, _ = mri_loader.setup_dataset()
+    data_dir = project_root / "data"
     
+    if dataset_name == "mri":
+        mri_loader = MRILoader(data_dir=data_dir)
+        # Load clean datasets (no augmentation)
+        train_dataset, test_dataset, _ = mri_loader.setup_dataset()
+        
+        # Balance the training dataset using the same approach as other datasets
+        from torch.utils.data import Subset
+        import numpy as np
+        
+        # Get all indices and labels from the training dataset
+        all_indices = list(range(len(train_dataset)))
+        all_labels = [train_dataset[i][1] for i in all_indices]
+        
+        # Balance the dataset - set desired samples per class (same as other datasets)
+        n_samples_per_class = 300
+        balanced_indices, _ = mri_loader.balance_dataset(
+            paths=[str(i) for i in all_indices],  # Convert indices to strings
+            labels=[str(label) for label in all_labels],  # Convert to strings
+            min_count=n_samples_per_class,
+            randomize=True
+        )
+        
+        # Convert back to integers and create subset
+        balanced_indices = [int(idx) for idx in balanced_indices]
+        test_dataset = Subset(train_dataset, balanced_indices)  # Use balanced training data
+    
+    elif dataset_name == "breakhis":
+        breakhis_loader = BreakHisLoader(data_dir=data_dir)
+        # Load clean datasets (no augmentation)
+        train_dataset, test_dataset, _ = breakhis_loader.setup_dataset()
+        
+        # Balance the training dataset using the same approach as breakhis_data_setup
+        from torch.utils.data import Subset
+        import numpy as np
+        
+        # Get all indices and labels from the training dataset
+        all_indices = list(range(len(train_dataset)))
+        all_labels = [train_dataset[i][1] for i in all_indices]
+        
+        # Balance the dataset - set desired samples per class (same as setup file)
+        n_samples_per_class = 300
+        balanced_indices, _ = breakhis_loader.balance_dataset(
+            paths=[str(i) for i in all_indices],  # Convert indices to strings
+            labels=[str(label) for label in all_labels],  # Convert to strings
+            min_count=n_samples_per_class,
+            randomize=True
+        )
+        
+        # Convert back to integers and create subset
+        balanced_indices = [int(idx) for idx in balanced_indices]
+        test_dataset = Subset(train_dataset, balanced_indices)  # Use balanced training data
+    
+    elif dataset_name == "chexpert":
+        # Import and use the chexpert data setup function
+        import experiments.vision.chexpert_data_setup as cds
+        chexpert_loader = ChexPertLoader(data_dir=data_dir)
+        # Use the chexpert full setup function to get clean datasets
+        train_dataset, _ = cds.chexpert_full_setup()
+        
+        # Balance the training dataset using the same approach as chexpert_data_setup
+        from torch.utils.data import Subset
+        import numpy as np
+        
+        # Get all indices and labels from the training dataset
+        all_indices = list(range(len(train_dataset)))
+        all_labels = [train_dataset[i][1] for i in all_indices]
+        
+        # Balance the dataset - set desired samples per class (same as setup file)
+        n_samples_per_class = 300
+        balanced_indices, _ = chexpert_loader.balance_dataset(
+            paths=[str(i) for i in all_indices],  # Convert indices to strings
+            labels=[str(label) for label in all_labels],  # Convert to strings
+            min_count=n_samples_per_class,
+            randomize=True
+        )
+        
+        # Convert back to integers and create subset
+        balanced_indices = [int(idx) for idx in balanced_indices]
+        test_dataset = Subset(train_dataset, balanced_indices)  # Use balanced training data
 
     else:
-        # Add support for other datasets as needed
-        raise ValueError(f"Dataset {dataset_name} not supported yet")
+        raise ValueError(f"Dataset {dataset_name} not supported yet. Supported datasets: mri, breakhis, chexpert")
     
     print(f"Loaded test dataset with {len(test_dataset)} samples.")
-    results = {}
     dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     # Total patches in a standard ViT with 224x224 image and 16x16 patches
@@ -70,9 +152,10 @@ def get_patch_drop_outputs(dataset_name, device, batch_size=32):
     all_labels = []
 
     # Process each fraction (0/16, 2/16, ..., 15/16)
-    for fraction_num in range(0, 16):
+    for fraction_num in range(16):
+
         fraction = fraction_num / 16
-        print(f"Processing with {fraction:.2f} fraction of patches dropped...")
+        print(f"Processing with {fraction} fraction of patches dropped...")
         
         # Calculate number of patches to drop
         n_patches_to_drop = int(total_patches * fraction)
@@ -95,6 +178,8 @@ def get_patch_drop_outputs(dataset_name, device, batch_size=32):
                 size=n_patches_to_keep,
                 replace=False
             ).tolist()
+
+            # pdb.set_trace()
             
             # Always include class token (index 0)
             patches_to_keep = [0] + patches_to_keep
@@ -102,6 +187,8 @@ def get_patch_drop_outputs(dataset_name, device, batch_size=32):
             # Create mask with indices to keep
             patch_mask = create_patch_mask('indices', specific_patches=patches_to_keep, 
                                           total_patches=total_patches + 1, device=device)
+            
+            # pdb.set_trace()
             
             # Run inference with the mask
             with torch.no_grad():
@@ -128,4 +215,17 @@ def get_patch_drop_outputs(dataset_name, device, batch_size=32):
 
 if __name__ == "__main__":
     predictions, labels = get_patch_drop_outputs("mri", device=torch.device("cuda" if torch.cuda.is_available() else "cpu"), batch_size=32)
+
+
+    for fraction_idx in range(predictions.shape[0]):
+        fraction_preds = predictions[fraction_idx]
+        fraction_labels = labels[fraction_idx]
+
+        predicted_labels = torch.argmax(fraction_preds, dim=-1)
+        accuracy = (predicted_labels == fraction_labels).float().mean().item()
+        print(f"Fraction {fraction_idx}/16 - Accuracy: {accuracy*100:.2f}%")
+
+
+
+
     pdb.set_trace()

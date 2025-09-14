@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MRI KL Divergence Benchmark - MCal Implementation (Version 2)
+CheXpert KL Divergence Benchmark - MCal Implementation (Version 2)
 
 Similar to experiments/get_benchmarks.py, this script provides configurable methods
 for comparing KL divergence results with different calibration transforms.
@@ -180,7 +180,7 @@ def apply_transform(outputs, labels,method, device=None, **kwargs):
 def apply_expectation_prob_transform(outputs, device):
     """Apply probability-based expectation lambda transform using MCal module."""
     # Create temporary file for fitting
-    temp_path = "/tmp/mri_temp_predictions_expectation_prob.npy"
+    temp_path = "/tmp/chexpert_temp_predictions_expectation_prob.npy"
     np.save(temp_path, outputs)
     
     # Create and fit transform
@@ -212,7 +212,7 @@ def apply_expectation_prob_transform(outputs, device):
 def apply_expectation_onehot_transform(outputs, device):
     """Apply one-hot-based expectation lambda transform using MCal module."""
     # Create temporary file for fitting
-    temp_path = "/tmp/mri_temp_predictions_expectation_onehot.npy"
+    temp_path = "/tmp/chexpert_temp_predictions_expectation_onehot.npy"
     np.save(temp_path, outputs)
     
     # Create and fit transform
@@ -244,7 +244,7 @@ def apply_expectation_onehot_transform(outputs, device):
 def apply_optimized_lambda_transform(outputs, device, num_epochs=1000):
     """Apply optimized lambda transform using MCal module."""
     # Create temporary file for fitting
-    temp_path = "/tmp/mri_temp_predictions_optimized.npy"
+    temp_path = "/tmp/chexpert_temp_predictions_optimized.npy"
     np.save(temp_path, outputs)
     
     # Create and fit transform
@@ -276,7 +276,7 @@ def apply_optimized_lambda_transform(outputs, device, num_epochs=1000):
 def apply_logits_sharp_transform(outputs, device, num_epochs=1000, **kwargs):
     """Apply LogitsSharp transform using MCal module."""
     # Create temporary file for fitting
-    temp_path = "/tmp/mri_temp_predictions_logits_sharp.npy"
+    temp_path = "/tmp/chexpert_temp_predictions_logits_sharp.npy"
     np.save(temp_path, outputs)
     
     # Create and fit transform
@@ -340,7 +340,7 @@ def apply_mcal_calibrator(outputs, device, kappa=4.0, max_steps=10000, **kwargs)
     return transformed_outputs
 
 
-def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=5000, head_type="linear", experiment_id="mri_experiment", **kwargs):
+def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=5000, head_type="linear", experiment_id="chexpert_experiment", **kwargs):
     """Apply MCal_CE calibrator using cross-entropy loss with target labels from 0th index (unablated predictions)."""
 
 
@@ -579,7 +579,7 @@ def process_chexpert_dataset(methods=None, device="cuda", save_dir="./results", 
         overwrite (bool): Whether to overwrite existing results
         use_cache (bool): Whether to use cached predictions for vanilla model
         patchcutout_data_dir (str): Directory containing PatchCutout predictions
-        use_default_data (bool): Whether to use default MRI data from XAI_Benchmark
+        use_default_data (bool): Whether to use default CheXpert data
     """
     # Default methods - include all calibrators and pre-computed methods
     if methods is None:
@@ -592,7 +592,7 @@ def process_chexpert_dataset(methods=None, device="cuda", save_dir="./results", 
     os.makedirs(os.path.join(save_dir, "json"), exist_ok=True)
     
     print("="*60)
-    print("MRI KL Divergence Benchmark")
+    print("CheXpert KL Divergence Benchmark")
     print("="*60)
     print(f"Methods: {methods}")
     print(f"Runs: {n_runs}")
@@ -600,17 +600,17 @@ def process_chexpert_dataset(methods=None, device="cuda", save_dir="./results", 
     print(f"Fractions: {n_fractions}")
     print(f"Device: {device}")
     
-    # Load MRI model (only needed for methods that aren't pre-computed)
+    # Load CheXpert model (only needed for methods that aren't pre-computed)
     model, num_classes, dataloader, class_names = None, None, None, None
     precomputed_methods = {'patchcutout', 'arch_mod'}
     
     if any(method not in precomputed_methods for method in methods):
-        print("\nLoading MRI model...")
+        print("\nLoading CheXpert model...")
         model, num_classes = load_chexpert_model('vanilla', device)
-        print(f"Loaded model with {num_classes} classes")
+        print(f"Loaded CheXpert model with {num_classes} classes")
         
-        # Load MRI dataset using our updated loader
-        print("\nLoading MRI dataset using MCal loader (XAI_Benchmark compatible)...")
+        # Load CheXpert dataset using our updated loader
+        print("\nLoading CheXpert dataset using MCal loader...")
         # dataloader, class_names = load_chexpert_dataset()
         print(f"Dataset classes: {class_names}")
     
@@ -635,8 +635,8 @@ def process_chexpert_dataset(methods=None, device="cuda", save_dir="./results", 
 
             elif method == 'arch_mod':
 
-                predictions,labels = get_patch_drop_outputs("mri", device=device, batch_size=32)
-               
+                predictions,labels = get_patch_drop_outputs("chexpert", device=device, batch_size=32,num_classes=num_classes)
+
             else:
                 # Generate baseline predictions from real images for other methods
                 if model is None:
@@ -681,7 +681,7 @@ def process_chexpert_dataset(methods=None, device="cuda", save_dir="./results", 
     aggregated_results = aggregate_results(all_results)
     
     # Save results as JSON
-    json_path = os.path.join(save_dir, "json", "aggregated_results_mri.json")
+    json_path = os.path.join(save_dir, "json", "aggregated_results_chexpert.json")
     
     # Convert to JSON serializable format
     json_serializable_results = convert_to_json_serializable(aggregated_results)
@@ -693,13 +693,13 @@ def process_chexpert_dataset(methods=None, device="cuda", save_dir="./results", 
     # Build and display comparison table
     table = build_kl_comparison_table(aggregated_results, include_methods=methods)
     
-    print(f"\nKL Divergence Comparison for MRI (averaged over {n_runs} runs):")
+    print(f"\nKL Divergence Comparison for CheXpert (averaged over {n_runs} runs):")
     print(table)
     
     # Save table
-    table_path = os.path.join(save_dir, "kl_comparison_table_mri.txt")
+    table_path = os.path.join(save_dir, "kl_comparison_table_chexpert.txt")
     with open(table_path, 'w') as f:
-        f.write(f"KL Divergence Comparison for MRI (averaged over {n_runs} runs):\n")
+        f.write(f"KL Divergence Comparison for CheXpert (averaged over {n_runs} runs):\n")
         f.write(table)
     print(f"Comparison table saved to {table_path}")
     
@@ -726,7 +726,7 @@ def convert_to_json_serializable(obj):
 
 def main():
     """Main execution function."""
-    parser = argparse.ArgumentParser(description="MRI KL Divergence Benchmark")
+    parser = argparse.ArgumentParser(description="CheXpert KL Divergence Benchmark")
     parser.add_argument("--methods", nargs='+', 
                        default=['baseline', 'replace_mean', 'patchcutout', 'arch_mod', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp'],
                        help="Methods to include in benchmark. Available: baseline, replace_mean, patchcutout, arch_mod, mcal, mcal_ce, platt, temperature, logits_sharp, expectation_prob, expectation_onehot, optimized_lambda")
@@ -739,7 +739,7 @@ def main():
                        help="Directory containing PatchCutout predictions from XAI_Benchmark")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing results")
     parser.add_argument("--no-cache", action="store_true", help="Disable caching of generated predictions")
-    parser.add_argument("--no-default-data", action="store_true", help="Disable use of default MRI data from XAI_Benchmark")
+    parser.add_argument("--no-default-data", action="store_true", help="Disable use of default CheXpert data")
     
     args = parser.parse_args()
     

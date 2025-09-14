@@ -599,14 +599,14 @@ def process_breakhis_dataset(methods=None, device="cuda", save_dir="./results", 
     model, num_classes, dataloader, class_names = None, None, None, None
     precomputed_methods = {'patchcutout', 'arch_mod'}
     
-    if any(method not in precomputed_methods for method in methods):
-        print("\nLoading BreakHis model...")
-        model, num_classes = load_breakhis_model('vanilla', device)
-        print(f"Loaded BreakHis model with {num_classes} classes")
-        
-        # Load BreakHis dataset using our updated loader
-        print("\nLoading BreakHis dataset using MCal loader...")
-        print(f"Dataset classes: {class_names}")
+    model, num_classes = load_breakhis_model('vanilla', device)
+
+    print(f"Loaded BreakHis model with {num_classes} classes")
+    # pdb.set_trace()
+    
+    # Load BreakHis dataset using our updated loader
+    print("\nLoading BreakHis dataset using MCal loader...")
+    print(f"Dataset classes: {class_names}")
     
     # Initialize results storage
     all_results = {method: [] for method in methods}
@@ -629,7 +629,7 @@ def process_breakhis_dataset(methods=None, device="cuda", save_dir="./results", 
 
             elif method == 'arch_mod':
 
-                predictions,labels = get_patch_drop_outputs("breakhis", device=device, batch_size=32)
+                predictions,labels = get_patch_drop_outputs("breakhis", device=device, batch_size=32,num_classes=num_classes)
                
             else:
                 # Generate baseline predictions from real images for other methods
