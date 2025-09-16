@@ -43,8 +43,9 @@ from medqa_utils import (
     MCal_LLaMAModel,
     load_local_medqa_data,
     load_real_medqa_data,
-    load_synthetic_medqa_data,
+    # load_synthetic_medqa_data,
     generate_fractionwise_predictions,
+    generate_fractionwise_predictions_with_token_dropping,
     create_medqa_prompt,
     map_probs_to_list
 )
@@ -376,6 +377,7 @@ def build_kl_comparison_table(aggregated_results, include_methods=None):
         'mcal_ce': "MCal_CE (Cross-Entropy)",
         'platt': "Platt Scaling",
         'temperature': "Temperature Scaling",
+        'token_drop': "Token Dropping",
         'logits_sharp': "Logits Sharp Transform",
         'expectation_prob': "Expectation Probability Transform",
         'expectation_onehot': "Expectation One-hot Transform",
@@ -417,7 +419,7 @@ def load_medqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
     print(f"Loading MedQA data with {n_samples} samples, {n_fractions} fractions...")
     print(f"Real data: {use_real_data}, Balanced: {balanced}")
 
-    if model_type == "vanilla":
+    if model_type in ["vanilla", "token_drop"]:
         # Load model
         expanded_path = Path(model_path).expanduser()
         model = load_medqa_llama_model(str(expanded_path))
@@ -433,23 +435,36 @@ def load_medqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
         # Generate predictions with different ablation fractions
         removal_fractions = np.linspace(0, 0.9, n_fractions).tolist()
 
-        predictions = generate_fractionwise_predictions(
-            model=model,
-            data=medqa_questions,
-            removal_fractions=removal_fractions,
-            prompt_type='default',
-            batch_size=min(8, n_samples),
-            num_options=4
-        )
+        if model_type == "token_drop":
+            # Use token dropping strategy
+            predictions = generate_fractionwise_predictions_with_token_dropping(
+                model=model,
+                data=medqa_questions,
+                removal_fractions=removal_fractions,
+                prompt_type='default',
+                batch_size=min(8, n_samples),
+                num_options=5,
+                use_tokenizer=True  # Enable token dropping
+            )
+        else:
+            # Use standard word replacement strategy
+            predictions = generate_fractionwise_predictions(
+                model=model,
+                data=medqa_questions,
+                removal_fractions=removal_fractions,
+                prompt_type='default',
+                batch_size=min(8, n_samples),
+                num_options=5
+            )
 
         # Generate labels from correct answers
-        if use_real_data and 'answer' in medqa_questions[0]:
+        if use_real_data and 'answer_idx' in medqa_questions[0]:
             # Use actual correct answers for real data
-            labels = np.array([ord(q['answer']) - ord('A') for q in medqa_questions])
+            labels = np.array([ord(q['answer_idx']) - ord('A') for q in medqa_questions])
             print(f"Using real MedQA ground truth labels")
 
             # Report label distribution
-            label_dist = {i: np.sum(labels == i) for i in range(4)}
+            label_dist = {i: np.sum(labels == i) for i in range(5)}
             label_dist_letters = {chr(65 + i): count for i, count in label_dist.items()}
             print(f"Label distribution: {label_dist_letters}")
         else:
@@ -501,36 +516,70 @@ def process_medqa_dataset(methods=None, device="cuda", save_dir="./results", n_r
     for run in range(n_runs):
         print(f"\n--- Run {run + 1}/{n_runs} ---")
 
-        # Load data for this run
-        predictions, labels = load_medqa_data(
-            model_type="vanilla",
-            n_samples=n_samples,
-            n_fractions=n_fractions,
-            model_path=model_path,
-            use_real_data=use_real_data,
-            balanced=balanced
-        )
+        # Check if we need token dropping data
+        need_token_drop = 'token_drop' in methods
+        need_vanilla = any(method != 'token_drop' for method in methods)
+
+        # Load data for different ablation strategies
+        all_predictions = {}
+        all_labels = {}
+
+        if need_vanilla:
+            # Load vanilla (word replacement) data
+            predictions_vanilla, labels_vanilla = load_medqa_data(
+                model_type="vanilla",
+                n_samples=n_samples,
+                n_fractions=n_fractions,
+                model_path=model_path,
+                use_real_data=use_real_data,
+                balanced=balanced
+            )
+            all_predictions['vanilla'] = predictions_vanilla
+            all_labels['vanilla'] = labels_vanilla
+
+        if need_token_drop:
+            # Load token dropping data
+            predictions_token_drop, labels_token_drop = load_medqa_data(
+                model_type="token_drop",
+                n_samples=n_samples,
+                n_fractions=n_fractions,
+                model_path=model_path,
+                use_real_data=use_real_data,
+                balanced=balanced
+            )
+            all_predictions['token_drop'] = predictions_token_drop
+            all_labels['token_drop'] = labels_token_drop
         # Process each method
         for method in methods:
             print(f"\nProcessing method: {method}")
 
-            # Apply transformation
-            if method == 'baseline':
+            # Select appropriate predictions and labels
+            if method == 'token_drop':
+                predictions = all_predictions['token_drop']
+                labels = all_labels['token_drop']
+                # For token_drop, the baseline predictions are already the "transformed" ones
                 transformed_predictions = predictions
             else:
-                # Configure method-specific parameters
-                method_kwargs = {}
-                if method in ['mcal', 'mcal_ce', 'platt', 'temperature']:
-                    method_kwargs['max_steps'] = 1000
-                if method == 'mcal':
-                    method_kwargs['kappa'] = 10.0
-                elif method == 'mcal_ce':
-                    method_kwargs['max_steps'] = 5000
-                    method_kwargs['head_type'] = 'linear'
+                predictions = all_predictions['vanilla']
+                labels = all_labels['vanilla']
 
-                transformed_predictions = apply_transform(
-                    predictions.numpy(), labels.numpy(), method, device, **method_kwargs
-                )
+                # Apply transformation
+                if method == 'baseline':
+                    transformed_predictions = predictions
+                else:
+                    # Configure method-specific parameters
+                    method_kwargs = {}
+                    if method in ['mcal', 'mcal_ce', 'platt', 'temperature']:
+                        method_kwargs['max_steps'] = 1000
+                    if method == 'mcal':
+                        method_kwargs['kappa'] = 10.0
+                    elif method == 'mcal_ce':
+                        method_kwargs['max_steps'] = 5000
+                        method_kwargs['head_type'] = 'linear'
+
+                    transformed_predictions = apply_transform(
+                        predictions.numpy(), labels.numpy(), method, device, **method_kwargs
+                    )
 
             # Calculate KL metrics with accuracy
             kl_results = calculate_kl_metrics(transformed_predictions, labels.numpy(), device)
@@ -588,7 +637,7 @@ def main():
     parser = argparse.ArgumentParser(description="MedQA KL Divergence Benchmark")
     parser.add_argument("--methods", nargs='+',
                        default=['baseline', 'mcal', 'platt', 'temperature'],
-                       help="Methods to include in benchmark")
+                       help="Methods to include in benchmark (baseline, mcal, mcal_ce, platt, temperature, token_drop)")
     parser.add_argument("--runs", type=int, default=3, help="Number of runs")
     parser.add_argument("--samples", type=int, default=10, help="Samples per run")
     parser.add_argument("--fractions", type=int, default=10, help="Number of fractions")

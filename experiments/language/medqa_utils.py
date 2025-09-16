@@ -36,6 +36,52 @@ def replace_random_features(text, tokenize_func=default_tokenize, removal_fracti
 
     return modified_text
 
+def remove_random_tokens_with_tokenizer(text, tokenizer, removal_fraction=0.15):
+    """
+    Remove random tokens using a tokenizer (true token-level removal).
+
+    Args:
+        text (str): Input text to modify
+        tokenizer: HuggingFace tokenizer
+        removal_fraction (float): Fraction of tokens to remove (0.0 to 1.0)
+
+    Returns:
+        str: Modified text with tokens removed
+    """
+    if removal_fraction <= 0:
+        return text
+
+    # Tokenize the text
+    encoding = tokenizer(text, return_tensors="pt", add_special_tokens=False)
+    input_ids = encoding.input_ids[0]  # Remove batch dimension
+
+    # Get the original tokens for debugging
+    original_tokens = tokenizer.convert_ids_to_tokens(input_ids)
+
+    # Calculate number of tokens to remove
+    num_tokens = len(input_ids)
+    num_remove = int(num_tokens * removal_fraction)
+
+    if num_remove <= 0 or num_tokens <= 0:
+        return text
+
+    # Randomly select token indices to remove
+    indices_to_remove = random.sample(range(num_tokens), min(num_remove, num_tokens))
+    indices_to_remove = set(indices_to_remove)
+
+    # Create new token list with selected tokens removed
+    remaining_token_ids = [token_id for i, token_id in enumerate(input_ids) if i not in indices_to_remove]
+
+    # Convert back to text
+    if len(remaining_token_ids) > 0:
+        # Convert token IDs back to text
+        modified_text = tokenizer.decode(remaining_token_ids, skip_special_tokens=True)
+    else:
+        # If all tokens were removed, return a minimal text
+        modified_text = ""
+
+    return modified_text
+
 
 # ===== LLAMA MODEL WRAPPER =====
 
@@ -102,13 +148,14 @@ class MCal_LLaMAModel:
 
 # ===== MEDQA DATA UTILITIES =====
 
-def create_medqa_prompt(question_data, removal_fraction=None, prompt_type='default'):
+def create_medqa_prompt(question_data, removal_fraction=None, prompt_type='default', use_tokenizer=False, tokenizer=None):
     """Create a MedQA-style prompt with optional ablation."""
 
     # Extract question and choices
     if isinstance(question_data, dict):
         question = question_data.get('question', '')
-        choices = question_data.get('choices', {})
+        # MedQA data uses 'options' field, but also check 'choices' for compatibility
+        choices = question_data.get('options', question_data.get('choices', {}))
     else:
         # Handle simple string questions for testing
         question = str(question_data)
@@ -116,7 +163,12 @@ def create_medqa_prompt(question_data, removal_fraction=None, prompt_type='defau
 
     # Apply ablation to question if specified
     if removal_fraction is not None and removal_fraction > 0:
-        question = replace_random_features(question, removal_fraction=removal_fraction)
+        if use_tokenizer and tokenizer is not None:
+            # Use token-level removal
+            question = remove_random_tokens_with_tokenizer(question, tokenizer, removal_fraction)
+        else:
+            # Use word-level replacement
+            question = replace_random_features(question, removal_fraction=removal_fraction)
 
     # Construct prompt based on type
     if prompt_type == 'COT':
@@ -154,10 +206,89 @@ def map_probs_to_list(prob_dict, num_options=5):
 
     return prob_list
 
+def generate_fractionwise_predictions_with_token_dropping(model, data, removal_fractions, prompt_type='default',
+                                                         batch_size=8, num_options=5, use_tokenizer=False):
+    """
+    Generate predictions for different removal fractions using either word replacement or token dropping.
+
+    Args:
+        model: LLaMA model instance
+        data: List of question data items
+        removal_fractions: List of fractions to test (e.g., [0.0, 0.1, 0.2, ...])
+        prompt_type: Type of prompt ('default', 'COT', 'Debiasing')
+        batch_size: Batch size for processing
+        num_options: Number of answer options (5 for MedQA)
+        use_tokenizer: If True, use token-level removal; if False, use word-level replacement
+
+    Returns:
+        numpy.ndarray: Array of shape (n_fractions, n_samples, n_options)
+    """
+    all_fraction_probs = []
+
+    print(f"Using {'token dropping' if use_tokenizer else 'word replacement'} strategy")
+
+    for removal_fraction in tqdm(removal_fractions, desc="Processing removal fractions"):
+        fraction_probs = []
+
+        # Process data in batches
+        for i in tqdm(range(0, len(data), batch_size),
+                     desc=f"Processing questions (removal fraction: {removal_fraction:.1f})",
+                     unit="batch", leave=False):
+            batch = data[i:i+batch_size]
+
+            # Construct prompts for the entire batch
+            prompts = [
+                create_medqa_prompt(
+                    question_data,
+                    removal_fraction=removal_fraction,
+                    prompt_type=prompt_type,
+                    use_tokenizer=use_tokenizer,
+                    tokenizer=model.tokenizer if use_tokenizer else None
+                ) for question_data in batch
+            ]
+
+            # Debug: Show example prompts for comparison
+            if len(data) <= 5 and removal_fraction == 0:
+                print(f"\n=== BASELINE FRACTION=0 DEBUG ===")
+                print(f"Baseline prompt (first item): {prompts[0][:200]}...")
+                print(f"use_tokenizer: {use_tokenizer}")
+                print("=== END BASELINE DEBUG ===\n")
+            elif len(data) <= 5 and removal_fraction > 0:
+                print(f"\n=== ABLATION FRACTION={removal_fraction} DEBUG ===")
+                print(f"Ablated prompt (first item): {prompts[0][:200]}...")
+                print(f"use_tokenizer: {use_tokenizer}")
+                print("=== END ABLATION DEBUG ===\n")
+
+            # Get model predictions
+            batch_top_tokens_and_probs = model(prompts, num_options=num_options)
+
+            # Map probabilities to list for each item in the batch
+            for top_tokens_and_probs in batch_top_tokens_and_probs:
+                prob_list = map_probs_to_list(top_tokens_and_probs, num_options=num_options)
+                if np.isnan(np.array(prob_list)).any():
+                    # Use uniform distribution as fallback
+                    fraction_probs.append(np.ones(num_options) * (1/num_options))
+                    continue
+                fraction_probs.append(prob_list)
+
+        all_fraction_probs.append(np.array(fraction_probs))
+
+        # Print mean probabilities for debugging
+        if len(fraction_probs) > 0:
+            mean_probs = np.mean(fraction_probs, axis=0)
+            print(f"  Fraction {removal_fraction:.1f} - Mean probabilities: {mean_probs}")
+
+    # Convert to numpy array with shape (n_fractions, n_samples, n_options)
+    import pdb; pdb.set_trace()
+
+    all_fraction_probs_np = np.array(all_fraction_probs)
+
+    return all_fraction_probs_np
+
 def load_local_medqa_data(n_samples=10, balanced=True):
     """Load MedQA dataset from local files following XAI-Benchmark pattern."""
     # Try to load from local balanced file first
-    balanced_file_path = "/home/antonxue/shailesh/MCal/experiments/language/dataset_store/language/medqa/dev_balanced.json"
+    balanced_file_path = "/home/antonxue/shailesh/MCal/data/language/balanced_dev.jsonl"
 
     if not os.path.exists(balanced_file_path):
         raise FileNotFoundError(
@@ -181,11 +312,9 @@ def load_sequential_local_medqa_data(file_path, n_samples):
             for line in file:
                 try:
                     item = json.loads(line.strip())
-                    # Only append items where 'choice_type' is 'single'
-                    if item.get("choice_type") == 'single':
-                        # Convert to our expected format
-                        converted_item = convert_medmcqa_to_medqa_format(item)
-                        data.append(converted_item)
+                    # MedQA data should have answer_idx field
+                    if 'answer_idx' in item and 'options' in item:
+                        data.append(item)
 
                         # Stop if we have enough samples
                         if len(data) >= n_samples:
@@ -203,8 +332,8 @@ def load_balanced_local_medqa_data(file_path, n_samples):
     """Load MedQA data with balanced answer distribution."""
     from collections import defaultdict
 
-    # Calculate samples per answer choice (A, B, C, D)
-    choices = ['A', 'B', 'C', 'D']
+    # Calculate samples per answer choice (A, B, C, D, E)
+    choices = ['A', 'B', 'C', 'D', 'E']
     samples_per_choice = n_samples // len(choices)
     remaining_samples = n_samples % len(choices)
 
@@ -221,16 +350,14 @@ def load_balanced_local_medqa_data(file_path, n_samples):
             for line in file:
                 try:
                     item = json.loads(line.strip())
-                    # Only process single choice questions
-                    if item.get("choice_type") == 'single':
-                        # Convert to our expected format
-                        converted_item = convert_medmcqa_to_medqa_format(item)
-                        answer = converted_item['answer']
+                    # MedQA data should have answer_idx field
+                    if 'answer_idx' in item and 'options' in item:
+                        answer = item['answer_idx']
 
                         # Only collect if we still need samples for this answer
                         current_target = samples_per_choice + (1 if ord(answer) - ord('A') < remaining_samples else 0)
                         if len(questions_by_answer[answer]) < current_target:
-                            questions_by_answer[answer].append(converted_item)
+                            questions_by_answer[answer].append(item)
 
                         # Check if we have enough samples for all answers
                         total_collected = sum(len(questions_by_answer[choice]) for choice in choices)
@@ -251,7 +378,7 @@ def load_balanced_local_medqa_data(file_path, n_samples):
         # Report final distribution
         final_distribution = {choice: 0 for choice in choices}
         for q in balanced_questions:
-            final_distribution[q['answer']] += 1
+            final_distribution[q['answer_idx']] += 1
 
         print(f"✓ Loaded {len(balanced_questions)} balanced local MedQA questions")
         print(f"  Distribution: {final_distribution}")
@@ -398,129 +525,129 @@ def _load_balanced_medqa_data(val_data, n_samples):
 
     return balanced_questions
 
-def load_synthetic_medqa_data(n_samples=10):
-    """Load synthetic MedQA-style data for testing."""
+# def load_synthetic_medqa_data(n_samples=10):
+#     """Load synthetic MedQA-style data for testing."""
 
-    # Sample medical questions for testing
-    synthetic_questions = [
-        {
-            "question": "What is the most common cause of bacterial pneumonia in adults?",
-            "choices": {
-                "A": "Streptococcus pneumoniae",
-                "B": "Haemophilus influenzae",
-                "C": "Mycoplasma pneumoniae",
-                "D": "Klebsiella pneumoniae",
-                "E": "Staphylococcus aureus"
-            },
-            "answer": "A"
-        },
-        {
-            "question": "Which hormone is primarily responsible for regulating blood glucose levels?",
-            "choices": {
-                "A": "Cortisol",
-                "B": "Insulin",
-                "C": "Thyroxine",
-                "D": "Adrenaline",
-                "E": "Growth hormone"
-            },
-            "answer": "B"
-        },
-        {
-            "question": "What is the normal range for adult human body temperature in degrees Celsius?",
-            "choices": {
-                "A": "35.0-36.0",
-                "B": "36.1-37.2",
-                "C": "37.3-38.0",
-                "D": "38.1-39.0",
-                "E": "39.1-40.0"
-            },
-            "answer": "B"
-        },
-        {
-            "question": "Which of the following is the primary site of protein synthesis in eukaryotic cells?",
-            "choices": {
-                "A": "Nucleus",
-                "B": "Mitochondria",
-                "C": "Ribosomes",
-                "D": "Golgi apparatus",
-                "E": "Endoplasmic reticulum"
-            },
-            "answer": "C"
-        },
-        {
-            "question": "What is the most common type of kidney stone?",
-            "choices": {
-                "A": "Calcium oxalate",
-                "B": "Calcium phosphate",
-                "C": "Uric acid",
-                "D": "Struvite",
-                "E": "Cystine"
-            },
-            "answer": "A"
-        },
-        {
-            "question": "Which vitamin deficiency causes scurvy?",
-            "choices": {
-                "A": "Vitamin A",
-                "B": "Vitamin B12",
-                "C": "Vitamin C",
-                "D": "Vitamin D",
-                "E": "Vitamin K"
-            },
-            "answer": "C"
-        },
-        {
-            "question": "What is the normal resting heart rate for a healthy adult?",
-            "choices": {
-                "A": "40-50 beats per minute",
-                "B": "60-100 beats per minute",
-                "C": "100-120 beats per minute",
-                "D": "120-140 beats per minute",
-                "E": "140-160 beats per minute"
-            },
-            "answer": "B"
-        },
-        {
-            "question": "Which blood type is considered the universal donor?",
-            "choices": {
-                "A": "Type A",
-                "B": "Type B",
-                "C": "Type AB",
-                "D": "Type O",
-                "E": "Type O negative"
-            },
-            "answer": "E"
-        },
-        {
-            "question": "What is the primary function of red blood cells?",
-            "choices": {
-                "A": "Fighting infection",
-                "B": "Blood clotting",
-                "C": "Oxygen transport",
-                "D": "Immune response",
-                "E": "Hormone production"
-            },
-            "answer": "C"
-        },
-        {
-            "question": "Which part of the brain controls balance and coordination?",
-            "choices": {
-                "A": "Cerebrum",
-                "B": "Cerebellum",
-                "C": "Brain stem",
-                "D": "Hypothalamus",
-                "E": "Medulla oblongata"
-            },
-            "answer": "B"
-        }
-    ]
+#     # Sample medical questions for testing
+#     synthetic_questions = [
+#         {
+#             "question": "What is the most common cause of bacterial pneumonia in adults?",
+#             "choices": {
+#                 "A": "Streptococcus pneumoniae",
+#                 "B": "Haemophilus influenzae",
+#                 "C": "Mycoplasma pneumoniae",
+#                 "D": "Klebsiella pneumoniae",
+#                 "E": "Staphylococcus aureus"
+#             },
+#             "answer": "A"
+#         },
+#         {
+#             "question": "Which hormone is primarily responsible for regulating blood glucose levels?",
+#             "choices": {
+#                 "A": "Cortisol",
+#                 "B": "Insulin",
+#                 "C": "Thyroxine",
+#                 "D": "Adrenaline",
+#                 "E": "Growth hormone"
+#             },
+#             "answer": "B"
+#         },
+#         {
+#             "question": "What is the normal range for adult human body temperature in degrees Celsius?",
+#             "choices": {
+#                 "A": "35.0-36.0",
+#                 "B": "36.1-37.2",
+#                 "C": "37.3-38.0",
+#                 "D": "38.1-39.0",
+#                 "E": "39.1-40.0"
+#             },
+#             "answer": "B"
+#         },
+#         {
+#             "question": "Which of the following is the primary site of protein synthesis in eukaryotic cells?",
+#             "choices": {
+#                 "A": "Nucleus",
+#                 "B": "Mitochondria",
+#                 "C": "Ribosomes",
+#                 "D": "Golgi apparatus",
+#                 "E": "Endoplasmic reticulum"
+#             },
+#             "answer": "C"
+#         },
+#         {
+#             "question": "What is the most common type of kidney stone?",
+#             "choices": {
+#                 "A": "Calcium oxalate",
+#                 "B": "Calcium phosphate",
+#                 "C": "Uric acid",
+#                 "D": "Struvite",
+#                 "E": "Cystine"
+#             },
+#             "answer": "A"
+#         },
+#         {
+#             "question": "Which vitamin deficiency causes scurvy?",
+#             "choices": {
+#                 "A": "Vitamin A",
+#                 "B": "Vitamin B12",
+#                 "C": "Vitamin C",
+#                 "D": "Vitamin D",
+#                 "E": "Vitamin K"
+#             },
+#             "answer": "C"
+#         },
+#         {
+#             "question": "What is the normal resting heart rate for a healthy adult?",
+#             "choices": {
+#                 "A": "40-50 beats per minute",
+#                 "B": "60-100 beats per minute",
+#                 "C": "100-120 beats per minute",
+#                 "D": "120-140 beats per minute",
+#                 "E": "140-160 beats per minute"
+#             },
+#             "answer": "B"
+#         },
+#         {
+#             "question": "Which blood type is considered the universal donor?",
+#             "choices": {
+#                 "A": "Type A",
+#                 "B": "Type B",
+#                 "C": "Type AB",
+#                 "D": "Type O",
+#                 "E": "Type O negative"
+#             },
+#             "answer": "E"
+#         },
+#         {
+#             "question": "What is the primary function of red blood cells?",
+#             "choices": {
+#                 "A": "Fighting infection",
+#                 "B": "Blood clotting",
+#                 "C": "Oxygen transport",
+#                 "D": "Immune response",
+#                 "E": "Hormone production"
+#             },
+#             "answer": "C"
+#         },
+#         {
+#             "question": "Which part of the brain controls balance and coordination?",
+#             "choices": {
+#                 "A": "Cerebrum",
+#                 "B": "Cerebellum",
+#                 "C": "Brain stem",
+#                 "D": "Hypothalamus",
+#                 "E": "Medulla oblongata"
+#             },
+#             "answer": "B"
+#         }
+#     ]
 
-    # Repeat questions to reach desired sample size
-    questions = []
-    for i in range(n_samples):
-        questions.append(synthetic_questions[i % len(synthetic_questions)])
+#     # Repeat questions to reach desired sample size
+#     questions = []
+#     for i in range(n_samples):
+#         questions.append(synthetic_questions[i % len(synthetic_questions)])
 
-    return questions
+#     return questions
 
 def generate_fractionwise_predictions(
     model,
@@ -573,6 +700,7 @@ def generate_fractionwise_predictions(
         print(f"  Fraction {removal_fraction:.1f} - Mean probabilities: {mean_probs}")
 
     # Convert to numpy array with shape (n_fractions, n_samples, n_classes)
+    import pdb; pdb.set_trace()
     all_fraction_probs_np = np.array(all_fraction_probs)
 
     return all_fraction_probs_np
