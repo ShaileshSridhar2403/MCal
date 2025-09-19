@@ -18,6 +18,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import json
 from tabulate import tabulate
+import pdb
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent.parent
@@ -36,6 +37,8 @@ from medmcqa_utils import (
     load_local_medmcqa_data,
     load_synthetic_medmcqa_data,
     generate_fractionwise_predictions,
+    generate_fractionwise_predictions_with_token_dropping,
+    generate_fractionwise_predictions_with_attention_mask,
     create_medmcqa_prompt,
     map_probs_to_list
 )
@@ -66,11 +69,17 @@ def calculate_kl_metrics(outputs, labels=None, device=None):
         one_hot_expectation, prob_expectation = get_expectation(fraction_preds, device)
 
         # Uniform distribution for comparison
-        uniform_dist = torch.ones(n_outputs, device=device) / n_outputs
+        # uniform_dist = torch.ones(n_outputs, device=device) / n_outputs
+        # pdb.set_trace()
+        # clean_dist = labels.mean(dim = 0)
+        clean_dist = torch.tensor(outputs[0], dtype=torch.float32, device=device).mean(dim=0)
 
+        
         # Calculate KL divergences
-        kl_argmax = kl_divergence(one_hot_expectation, uniform_dist).item()
-        kl_prob = kl_divergence(prob_expectation, uniform_dist).item()
+        # kl_argmax = kl_divergence(one_hot_expectation, uniform_dist).item()
+        # kl_prob = kl_divergence(prob_expectation, uniform_dist).item()
+        kl_argmax = kl_divergence(one_hot_expectation, clean_dist).item()
+        kl_prob = kl_divergence(prob_expectation, clean_dist).item()
 
         kl_values_argmax.append(kl_argmax)
         kl_values_prob.append(kl_prob)
@@ -119,7 +128,7 @@ def apply_transform(outputs, labels, method, device=None, **kwargs):
     if method == 'baseline':
         return outputs
     elif method == 'mcal':
-        return apply_mcal_calibrator(outputs, labels, device, **kwargs)
+        return apply_mcal_calibrator(outputs, device, **kwargs)
     elif method == 'mcal_ce':
         return apply_mcal_ce_calibrator(outputs, labels, device, **kwargs)
     elif method == 'platt':
@@ -129,25 +138,39 @@ def apply_transform(outputs, labels, method, device=None, **kwargs):
     else:
         raise ValueError(f"Unknown transformation method: {method}")
 
-def apply_mcal_calibrator(outputs_tensor, target_labels, device, max_iter=100, **kwargs):
-    """Apply MCal calibrator."""
-    n_fractions, n_samples, n_classes = outputs_tensor.shape
-    transformed_outputs = np.zeros_like(outputs_tensor)
+def apply_mcal_calibrator(outputs, device, kappa=4.0, max_steps=10000, **kwargs):
+    """Apply MCal calibrator using uniform target distribution."""
+    n_fractions, n_samples, n_classes = outputs.shape
+    transformed_outputs = np.zeros_like(outputs)
 
-    for fraction in tqdm(range(n_fractions), desc="Applying MCal calibrator"):
-        calibrator = MCal(n_classes=n_classes)
+    # Create uniform target distribution
+    uniform_target = torch.ones(n_classes, device=device) / n_classes
 
-        # Convert to tensors and apply calibrator
-        predictions = torch.from_numpy(outputs_tensor[fraction]).float()
-        labels = torch.from_numpy(target_labels).long()
+    # Train one MCal calibrator per fraction
+    calibrators = []
 
-        # Fit and transform
-        transformed_predictions = calibrator.fit_transform(predictions, labels, max_iter=max_iter)
-        transformed_outputs[fraction] = transformed_predictions.numpy()
+    for fraction in tqdm(range(n_fractions), desc="Training MCal calibrators"):
+        ablated_probs = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
+
+        calibrator = MCal(num_classes=n_classes, target_distribution=uniform_target)
+        calibrator.to(device)
+        calibrator.fit(
+            ablated_probs=ablated_probs,
+            target_distribution=uniform_target,
+            kappa=kappa,
+            max_steps=max_steps,
+            lr=1e-1,
+            verbose=False
+        )
+        calibrators.append(calibrator)
+
+        # Transform this fraction's predictions
+        transformed_probs = calibrator.forward(ablated_probs)
+        transformed_outputs[fraction] = transformed_probs.detach().cpu().numpy()
 
     return transformed_outputs
 
-def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=5000, head_type="linear", experiment_id="medmcqa_experiment", **kwargs):
+def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=10000, head_type="linear", experiment_id="medmcqa_experiment", **kwargs):
     """Apply MCal_CE calibrator using cross-entropy loss."""
     # Convert numpy arrays to torch tensors if needed
     if not isinstance(outputs_tensor, torch.Tensor):
@@ -159,8 +182,9 @@ def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=50
     transformed_outputs = np.zeros_like(outputs_tensor.cpu().numpy())
 
     for fraction in tqdm(range(n_fractions), desc="Applying MCal_CE calibrator"):
-        calibrator = MCal_CE(num_classes=n_classes, head_type=head_type)
+        calibrator = MCal_CE(num_classes=n_classes, head_type="mlp")
         calibrator.to(device)
+        # pdb.set_trace()
         calibrator.fit(
             ablated_probs=outputs_tensor[fraction],
             target_labels=target_labels,
@@ -246,7 +270,7 @@ def load_medmcqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
     print(f"Loading MedMCQA data with {n_samples} samples, {n_fractions} fractions...")
     print(f"Real data: {use_real_data}, Balanced: {balanced}")
 
-    if model_type == "vanilla":
+    if model_type in ["vanilla", "token_drop", "attention_mask"]:
         # Load model
         expanded_path = Path(model_path).expanduser()
         model = load_medmcqa_llama_model(str(expanded_path))
@@ -261,42 +285,64 @@ def load_medmcqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
         # Generate predictions with different ablation fractions
         removal_fractions = np.linspace(0, 0.9, n_fractions).tolist()
 
-        predictions = generate_fractionwise_predictions(
-            model=model,
-            data=medmcqa_questions,
-            removal_fractions=removal_fractions,
-            prompt_type='default',
-            batch_size=min(8, n_samples),
-            num_options=4
-        )
-
-        # Generate labels from correct answers
-        if use_real_data and 'cop' in medmcqa_questions[0]:
-            # Use actual correct answers for real data
-            labels = np.array([q['cop'] - 1 for q in medmcqa_questions])  # Convert 1-indexed to 0-indexed
-            print(f"Using real MedMCQA ground truth labels")
-
-            # Report label distribution
-            label_dist = {i: np.sum(labels == i) for i in range(4)}
-            label_dist_letters = {chr(65 + i): count for i, count in label_dist.items()}
-            print(f"Label distribution: {label_dist_letters}")
+        if model_type == "token_drop":
+            # Use token dropping strategy
+            predictions = generate_fractionwise_predictions_with_token_dropping(
+                model=model,
+                data=medmcqa_questions,
+                removal_fractions=removal_fractions,
+                prompt_type='default',
+                batch_size=min(8, n_samples),
+                num_options=4,
+                use_tokenizer=True
+            )
+        elif model_type == "attention_mask":
+            # Use attention masking strategy (content-only)
+            predictions = generate_fractionwise_predictions_with_attention_mask(
+                model=model,
+                data=medmcqa_questions,
+                removal_fractions=removal_fractions,
+                prompt_type='default',
+                batch_size=min(8, n_samples),
+                num_options=4
+            )
         else:
-            # Fallback to argmax of clean predictions for synthetic data
-            clean_predictions = predictions[0]  # First fraction (no ablation)
-            labels = np.argmax(clean_predictions, axis=1)
-            print(f"Using argmax of clean predictions as labels")
-
-        print(f"Generated predictions shape: {predictions.shape}")
-        print(f"Labels shape: {labels.shape}")
-
-        # Convert to torch tensors
-        predictions = torch.from_numpy(predictions).float()
-        labels = torch.from_numpy(labels).long()
-
-        return predictions, labels
-
+            # Use standard word replacement strategy
+            predictions = generate_fractionwise_predictions(
+                model=model,
+                data=medmcqa_questions,
+                removal_fractions=removal_fractions,
+                prompt_type='default',
+                batch_size=min(8, n_samples),
+                num_options=4
+            )
     else:
         raise ValueError(f"Unknown model_type: {model_type}")
+
+    # Generate labels from correct answers (common to both vanilla and token_drop)
+    if use_real_data and 'cop' in medmcqa_questions[0]:
+        # Use actual correct answers for real data
+        labels = np.array([q['cop'] - 1 for q in medmcqa_questions])  # Convert 1-indexed to 0-indexed
+        print(f"Using real MedMCQA ground truth labels")
+
+        # Report label distribution
+        label_dist = {i: np.sum(labels == i) for i in range(4)}
+        label_dist_letters = {chr(65 + i): count for i, count in label_dist.items()}
+        print(f"Label distribution: {label_dist_letters}")
+    else:
+        # Fallback to argmax of clean predictions for synthetic data
+        clean_predictions = predictions[0]  # First fraction (no ablation)
+        labels = np.argmax(clean_predictions, axis=1)
+        print(f"Using argmax of clean predictions as labels")
+
+    print(f"Generated predictions shape: {predictions.shape}")
+    print(f"Labels shape: {labels.shape}")
+
+    # Convert to torch tensors
+    predictions = torch.from_numpy(predictions).float()
+    labels = torch.from_numpy(labels).long()
+
+    return predictions, labels
 
 def aggregate_results(all_results):
     """Aggregate results across multiple runs."""
@@ -371,7 +417,9 @@ def save_results(results, save_dir="./results"):
                 'mcal': 'MCal',
                 'mcal_ce': 'MCal_CE (Cross-Entropy)',
                 'platt': 'Platt Scaling',
-                'temperature': 'Temperature Scaling'
+                'temperature': 'Temperature Scaling',
+                'token_drop': 'Token Dropping',
+                'attention_mask': 'Attention Masking'
             }.get(method, method.upper())
             kl_prob = data['kl_transformed_mean_prob']
             kl_prob_std = data['kl_transformed_std_prob']
@@ -427,31 +475,83 @@ def process_medmcqa_dataset(methods=None, device="cuda", save_dir="./results", n
     for run in range(n_runs):
         print(f"\n--- Run {run+1}/{n_runs} ---")
 
-        # Load data for this run
-        predictions, labels = load_medmcqa_data(
-            model_type="vanilla",
-            n_samples=n_samples,
-            n_fractions=n_fractions,
-            model_path=model_path,
-            use_real_data=use_real_data,
-            balanced=balanced
-        )
+        # Check which data types we need
+        need_token_drop = 'token_drop' in methods
+        need_attention_mask = 'attention_mask' in methods
+        need_vanilla = any(method not in ['token_drop', 'attention_mask'] for method in methods)
+
+        # Load data for different ablation strategies
+        all_predictions = {}
+        all_labels = {}
+
+        if need_vanilla:
+            # Load vanilla (word replacement) data
+            predictions_vanilla, labels_vanilla = load_medmcqa_data(
+                model_type="vanilla",
+                n_samples=n_samples,
+                n_fractions=n_fractions,
+                model_path=model_path,
+                use_real_data=use_real_data,
+                balanced=balanced
+            )
+            all_predictions['vanilla'] = predictions_vanilla
+            all_labels['vanilla'] = labels_vanilla
+
+        if need_token_drop:
+            # Load token dropping data
+            predictions_token_drop, labels_token_drop = load_medmcqa_data(
+                model_type="token_drop",
+                n_samples=n_samples,
+                n_fractions=n_fractions,
+                model_path=model_path,
+                use_real_data=use_real_data,
+                balanced=balanced
+            )
+            all_predictions['token_drop'] = predictions_token_drop
+            all_labels['token_drop'] = labels_token_drop
+
+        if need_attention_mask:
+            # Load attention masking data
+            predictions_attention_mask, labels_attention_mask = load_medmcqa_data(
+                model_type="attention_mask",
+                n_samples=n_samples,
+                n_fractions=n_fractions,
+                model_path=model_path,
+                use_real_data=use_real_data,
+                balanced=balanced
+            )
+            all_predictions['attention_mask'] = predictions_attention_mask
+            all_labels['attention_mask'] = labels_attention_mask
 
         # Process each method
         for method in methods:
             print(f"\nProcessing method: {method}")
 
+            # Select appropriate predictions and labels
+            if method == 'token_drop':
+                predictions = all_predictions['token_drop']
+                labels = all_labels['token_drop']
+            elif method == 'attention_mask':
+                predictions = all_predictions['attention_mask']
+                labels = all_labels['attention_mask']
+            else:
+                predictions = all_predictions['vanilla']
+                labels = all_labels['vanilla']
+
             # Apply transformation
-            if method == 'baseline':
+            if method in ['baseline', 'token_drop', 'attention_mask']:
+                # For baseline, token_drop, and attention_mask: no additional transformation needed
                 transformed_predictions = predictions.numpy()
             else:
                 print(f"Applying {method} transform...")
                 # Get method-specific kwargs
                 method_kwargs = {}
                 if method == 'mcal_ce':
-                    method_kwargs['max_steps'] = 5000
+                    method_kwargs['max_steps'] = 10000
                     method_kwargs['experiment_id'] = f"medmcqa_experiment"
-
+                    # method_kwargs['lr'] = 1e-2
+                
+                labels = predictions[0].argmax(dim=-1)
                 transformed_predictions = apply_transform(
                     predictions.numpy(), labels.numpy(), method, device, **method_kwargs
                 )
@@ -477,7 +577,7 @@ def process_medmcqa_dataset(methods=None, device="cuda", save_dir="./results", n
 def main():
     parser = argparse.ArgumentParser(description="MedMCQA KL Divergence Benchmark")
     parser.add_argument("--methods", nargs='+', default=['baseline', 'mcal_ce'],
-                       choices=['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature'],
+                       choices=['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature', 'token_drop', 'attention_mask'],
                        help="Calibration methods to evaluate")
     parser.add_argument("--device", type=str, default="cuda",
                        help="Device to use (cuda/cpu)")

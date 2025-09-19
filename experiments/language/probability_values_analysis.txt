@@ -1,0 +1,57 @@
+ORIGINAL
+
+ predicted_labels = np.array(predicted_labels)
+Fraction 0/10 - KL Argmax: 0.007410, KL Prob: 0.003804, Accuracy: 0.8000
+Fraction 1/10 - KL Argmax: 0.004461, KL Prob: 0.004279, Accuracy: 0.7100
+Fraction 2/10 - KL Argmax: 0.018280, KL Prob: 0.009927, Accuracy: 0.6400
+Fraction 3/10 - KL Argmax: 0.015368, KL Prob: 0.013153, Accuracy: 0.5600
+Fraction 4/10 - KL Argmax: 0.007188, KL Prob: 0.005137, Accuracy: 0.5600
+Fraction 5/10 - KL Argmax: 0.011392, KL Prob: 0.011968, Accuracy: 0.5100
+Fraction 6/10 - KL Argmax: 0.017151, KL Prob: 0.013258, Accuracy: 0.4300
+Fraction 7/10 - KL Argmax: 0.044289, KL Prob: 0.023552, Accuracy: 0.4700
+Fraction 8/10 - KL Argmax: 0.011489, KL Prob: 0.008060, Accuracy: 0.3900
+Fraction 9/10 - KL Argmax: 0.017249, KL Prob: 0.019020, Accuracy: 0.2600
+  KL (prob): 0.011216
+  KL (argmax): 0.015428
+  Average accuracy: 0.5330
+
+
+
+MCAL CE
+
+Fraction 0/10 - KL Argmax: 0.001977, KL Prob: 0.000100, Accuracy: 0.8300
+Fraction 1/10 - KL Argmax: 0.001977, KL Prob: 0.000704, Accuracy: 0.7000
+Fraction 2/10 - KL Argmax: 0.005017, KL Prob: 0.001300, Accuracy: 0.6300
+Fraction 3/10 - KL Argmax: 0.004563, KL Prob: 0.001469, Accuracy: 0.5800
+Fraction 4/10 - KL Argmax: 0.002504, KL Prob: 0.000117, Accuracy: 0.5800
+Fraction 5/10 - KL Argmax: 0.013882, KL Prob: 0.000003, Accuracy: 0.5200
+Fraction 6/10 - KL Argmax: 0.026869, KL Prob: 0.000269, Accuracy: 0.4900
+Fraction 7/10 - KL Argmax: 0.031695, KL Prob: 0.000027, Accuracy: 0.4900
+Fraction 8/10 - KL Argmax: 0.068599, KL Prob: 0.000005, Accuracy: 0.4600
+Fraction 9/10 - KL Argmax: 0.001000, KL Prob: 0.000274, Accuracy: 0.3800
+  KL (prob): 0.000427
+  KL (argmax): 0.015808
+  Average accuracy: 0.5660
+
+
+
+
+MCAL OG
+
+
+Applying mcal transform...
+Training MCal calibrators: 100%|█████████| 10/10 [00:13<00:00,  1.38s/it]
+Applying MCal calibration: 100%|███████| 10/10 [00:00<00:00, 5606.61it/s]
+Fraction 0/10 - KL Argmax: 0.000000, KL Prob: 0.010538, Accuracy: 0.8200
+Fraction 1/10 - KL Argmax: 0.000500, KL Prob: 0.001965, Accuracy: 0.6700
+Fraction 2/10 - KL Argmax: 0.000000, KL Prob: 0.004487, Accuracy: 0.6400
+Fraction 3/10 - KL Argmax: 0.000500, KL Prob: 0.003263, Accuracy: 0.6200
+Fraction 4/10 - KL Argmax: 0.000500, KL Prob: 0.002815, Accuracy: 0.5300
+Fraction 5/10 - KL Argmax: 0.000500, KL Prob: 0.001824, Accuracy: 0.5200
+Fraction 6/10 - KL Argmax: 0.000500, KL Prob: 0.001580, Accuracy: 0.4600
+Fraction 7/10 - KL Argmax: 0.000500, KL Prob: 0.001121, Accuracy: 0.4300
+Fraction 8/10 - KL Argmax: 0.000500, KL Prob: 0.001632, Accuracy: 0.4000
+Fraction 9/10 - KL Argmax: 0.000500, KL Prob: 0.003381, Accuracy: 0.3300
+  KL (prob): 0.003261
+  KL (argmax): 0.000400
+  Average accuracy: 0.5420

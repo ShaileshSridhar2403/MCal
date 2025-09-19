@@ -18,6 +18,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import json
 from tabulate import tabulate
+import pdb
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent.parent
@@ -46,6 +47,7 @@ from medqa_utils import (
     # load_synthetic_medqa_data,
     generate_fractionwise_predictions,
     generate_fractionwise_predictions_with_token_dropping,
+    generate_fractionwise_predictions_with_attention_mask,
     create_medqa_prompt,
     map_probs_to_list
 )
@@ -78,11 +80,12 @@ def calculate_kl_metrics(outputs, labels=None, device=None):
         one_hot_expectation, prob_expectation = get_expectation(fraction_preds, device)
 
         # Uniform distribution for comparison
-        uniform_dist = torch.ones(n_outputs, device=device) / n_outputs
+        # uniform_dist = torch.ones(n_outputs, device=device) / n_outputs
+        clean_dist = torch.tensor(outputs[0], dtype=torch.float32, device=device).mean(dim=0)
 
         # Calculate KL divergences
-        kl_argmax = kl_divergence(one_hot_expectation, uniform_dist).item()
-        kl_prob = kl_divergence(prob_expectation, uniform_dist).item()
+        kl_argmax = kl_divergence(one_hot_expectation, clean_dist).item()
+        kl_prob = kl_divergence(prob_expectation, clean_dist).item()
 
         kl_values_argmax.append(kl_argmax)
         kl_values_prob.append(kl_prob)
@@ -201,18 +204,21 @@ def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=50
         outputs_tensor = torch.tensor(outputs_tensor, dtype=torch.float32, device=device)
     if not isinstance(target_labels, torch.Tensor):
         target_labels = torch.tensor(target_labels, dtype=torch.long, device=device)
+    
+    target_labels = outputs_tensor[0].argmax(dim=-1)
 
     n_fractions, n_samples, n_classes = outputs_tensor.shape
     transformed_outputs = np.zeros_like(outputs_tensor.cpu().numpy())
 
     for fraction in tqdm(range(n_fractions), desc="Applying MCal_CE calibrator"):
-        calibrator = MCal_CE(num_classes=n_classes, head_type=head_type)
+        calibrator = MCal_CE(num_classes=n_classes, head_type="mlp")
         calibrator.to(device)
+        # pdb.set_trace()
         calibrator.fit(
             ablated_probs=outputs_tensor[fraction],
             target_labels=target_labels,
             max_steps=max_steps,
-            lr=1e-3,
+            lr=1e-2,
             verbose=True,
             fraction=fraction,
             experiment_id=experiment_id
@@ -419,7 +425,7 @@ def load_medqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
     print(f"Loading MedQA data with {n_samples} samples, {n_fractions} fractions...")
     print(f"Real data: {use_real_data}, Balanced: {balanced}")
 
-    if model_type in ["vanilla", "token_drop"]:
+    if model_type in ["vanilla", "token_drop", "attention_mask"]:
         # Load model
         expanded_path = Path(model_path).expanduser()
         model = load_medqa_llama_model(str(expanded_path))
@@ -445,6 +451,16 @@ def load_medqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
                 batch_size=min(8, n_samples),
                 num_options=5,
                 use_tokenizer=True  # Enable token dropping
+            )
+        elif model_type == "attention_mask":
+            # Use attention masking strategy (content-only)
+            predictions = generate_fractionwise_predictions_with_attention_mask(
+                model=model,
+                data=medqa_questions,
+                removal_fractions=removal_fractions,
+                prompt_type='default',
+                batch_size=min(8, n_samples),
+                num_options=5
             )
         else:
             # Use standard word replacement strategy
@@ -516,9 +532,10 @@ def process_medqa_dataset(methods=None, device="cuda", save_dir="./results", n_r
     for run in range(n_runs):
         print(f"\n--- Run {run + 1}/{n_runs} ---")
 
-        # Check if we need token dropping data
+        # Check which data types we need
         need_token_drop = 'token_drop' in methods
-        need_vanilla = any(method != 'token_drop' for method in methods)
+        need_attention_mask = 'attention_mask' in methods
+        need_vanilla = any(method not in ['token_drop', 'attention_mask'] for method in methods)
 
         # Load data for different ablation strategies
         all_predictions = {}
@@ -549,6 +566,19 @@ def process_medqa_dataset(methods=None, device="cuda", save_dir="./results", n_r
             )
             all_predictions['token_drop'] = predictions_token_drop
             all_labels['token_drop'] = labels_token_drop
+
+        if need_attention_mask:
+            # Load attention masking data
+            predictions_attention_mask, labels_attention_mask = load_medqa_data(
+                model_type="attention_mask",
+                n_samples=n_samples,
+                n_fractions=n_fractions,
+                model_path=model_path,
+                use_real_data=use_real_data,
+                balanced=balanced
+            )
+            all_predictions['attention_mask'] = predictions_attention_mask
+            all_labels['attention_mask'] = labels_attention_mask
         # Process each method
         for method in methods:
             print(f"\nProcessing method: {method}")
@@ -558,6 +588,11 @@ def process_medqa_dataset(methods=None, device="cuda", save_dir="./results", n_r
                 predictions = all_predictions['token_drop']
                 labels = all_labels['token_drop']
                 # For token_drop, the baseline predictions are already the "transformed" ones
+                transformed_predictions = predictions
+            elif method == 'attention_mask':
+                predictions = all_predictions['attention_mask']
+                labels = all_labels['attention_mask']
+                # For attention_mask, the baseline predictions are already the "transformed" ones
                 transformed_predictions = predictions
             else:
                 predictions = all_predictions['vanilla']
@@ -637,7 +672,7 @@ def main():
     parser = argparse.ArgumentParser(description="MedQA KL Divergence Benchmark")
     parser.add_argument("--methods", nargs='+',
                        default=['baseline', 'mcal', 'platt', 'temperature'],
-                       help="Methods to include in benchmark (baseline, mcal, mcal_ce, platt, temperature, token_drop)")
+                       help="Methods to include in benchmark (baseline, mcal, mcal_ce, platt, temperature, token_drop, attention_mask)")
     parser.add_argument("--runs", type=int, default=3, help="Number of runs")
     parser.add_argument("--samples", type=int, default=10, help="Samples per run")
     parser.add_argument("--fractions", type=int, default=10, help="Number of fractions")

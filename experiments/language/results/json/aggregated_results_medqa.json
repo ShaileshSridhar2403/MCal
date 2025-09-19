@@ -1,0 +1,58 @@
+{
+    "baseline": {
+        "kl_baseline_mean_prob": 0.6378382941087087,
+        "kl_baseline_std_prob": 0.0,
+        "kl_baseline_mean_onehot": 1.3972659905751545,
+        "kl_baseline_std_onehot": 0.0,
+        "fraction_wise_results": {
+            "mean_argmax": [
+                0.9729232788085938,
+                1.609437346458435,
+                1.609437346458435
+            ],
+            "std_argmax": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "mean_prob": [
+                0.41021600365638733,
+                0.6591898202896118,
+                0.844109058380127
+            ],
+            "std_prob": [
+                0.0,
+                0.0,
+                0.0
+            ]
+        }
+    },
+    "token_drop": {
+        "kl_transformed_mean_prob": 0.3230065157016118,
+        "kl_transformed_std_prob": 0.0,
+        "kl_transformed_mean_onehot": 0.9729232788085938,
+        "kl_transformed_std_onehot": 0.0,
+        "fraction_wise_results_transformed": {
+            "mean_argmax": [
+                0.9729232788085938,
+                0.9729232788085938,
+                0.9729232788085938
+            ],
+            "std_argmax": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "mean_prob": [
+                0.41021600365638733,
+                0.3943112790584564,
+                0.16449226438999176
+            ],
+            "std_prob": [
+                0.0,
+                0.0,
+                0.0
+            ]
+        }
+    }
+}

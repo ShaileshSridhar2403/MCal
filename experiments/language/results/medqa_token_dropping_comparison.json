@@ -1,0 +1,44 @@
+{
+  "word_replacement": {
+    "average_kl_prob": 0.5056027501829649,
+    "average_kl_argmax": 1.6094379036284787,
+    "kl_results": [
+      {
+        "fraction": 0.0,
+        "kl_prob": 0.5129029453844403,
+        "kl_argmax": 1.6094379036284787
+      },
+      {
+        "fraction": 0.45,
+        "kl_prob": 0.40612256613531583,
+        "kl_argmax": 1.6094379036284787
+      },
+      {
+        "fraction": 0.9,
+        "kl_prob": 0.5977827390291387,
+        "kl_argmax": 1.6094379036284787
+      }
+    ]
+  },
+  "token_dropping": {
+    "average_kl_prob": 0.5136339374440094,
+    "average_kl_argmax": 1.6094379036284787,
+    "kl_results": [
+      {
+        "fraction": 0.0,
+        "kl_prob": 0.5129029453844403,
+        "kl_argmax": 1.6094379036284787
+      },
+      {
+        "fraction": 0.45,
+        "kl_prob": 0.3615909368850751,
+        "kl_argmax": 1.6094379036284787
+      },
+      {
+        "fraction": 0.9,
+        "kl_prob": 0.6664079300625129,
+        "kl_argmax": 1.6094379036284787
+      }
+    ]
+  }
+}
