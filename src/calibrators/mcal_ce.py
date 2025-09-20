@@ -126,8 +126,6 @@ class MCal_CE(BaseCalibrator):
         # self._validate_fit_inputs(ablated_probs, None)
         
         # pdb.set_trace()
-        lr = 1e-4
-        max_steps = 10000
         optimizer = optim.Adam(self.parameters(), lr=lr)
         stats = {"loss": [], "acc": []}
 

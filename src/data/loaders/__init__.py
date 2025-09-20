@@ -6,7 +6,7 @@ from .vision_loaders import (
     MRILoader,
     ChexPertLoader,
     ImageNetLoader,
-    ImageNetteLoader,
+    # ImageNetteLoader,
     get_vision_loader,
     mri_full_setup,
     VISION_LOADERS

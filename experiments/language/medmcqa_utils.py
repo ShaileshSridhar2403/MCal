@@ -44,6 +44,116 @@ def replace_random_features(text, tokenize_func=default_tokenize, removal_fracti
 
     return ' '.join(tokens)
 
+def remove_random_tokens_with_tokenizer(text, tokenizer, removal_fraction=0.15):
+    """
+    Remove random tokens using a tokenizer (true token-level removal).
+
+    Args:
+        text (str): Input text to modify
+        tokenizer: HuggingFace tokenizer
+        removal_fraction (float): Fraction of tokens to remove (0.0 to 1.0)
+
+    Returns:
+        str: Modified text with tokens removed
+    """
+    if removal_fraction <= 0:
+        return text
+
+    # Tokenize the text
+    encoding = tokenizer(text, return_tensors="pt", add_special_tokens=False)
+    input_ids = encoding.input_ids[0]  # Remove batch dimension
+
+    # Get the original tokens for debugging
+    original_tokens = tokenizer.convert_ids_to_tokens(input_ids)
+
+    # Calculate number of tokens to remove
+    num_tokens = len(input_ids)
+    num_remove = int(num_tokens * removal_fraction)
+
+    if num_remove <= 0 or num_tokens <= 0:
+        return text
+
+    # Randomly select token indices to remove
+    indices_to_remove = random.sample(range(num_tokens), min(num_remove, num_tokens))
+    indices_to_remove = set(indices_to_remove)
+
+    # Create new token list with selected tokens removed
+    remaining_token_ids = [token_id for i, token_id in enumerate(input_ids) if i not in indices_to_remove]
+
+    # Convert back to text
+    if len(remaining_token_ids) > 0:
+        # Convert token IDs back to text
+        modified_text = tokenizer.decode(remaining_token_ids, skip_special_tokens=True)
+    else:
+        # If all tokens were removed, return a minimal text
+        modified_text = ""
+
+    return modified_text
+
+
+# ===== ATTENTION MASK UTILITIES =====
+
+def create_random_attention_mask(input_ids, tokenizer, mask_fraction=0.15):
+    """
+    Create attention mask that randomly masks question content only.
+
+    Args:
+        input_ids (torch.Tensor): Token IDs from tokenizer [1, seq_len]
+        tokenizer: HuggingFace tokenizer
+        mask_fraction (float): Fraction of question content tokens to mask (0.0 to 1.0)
+
+    Returns:
+        torch.Tensor: Attention mask [1, seq_len] where 0 means "don't attend"
+    """
+    attention_mask = torch.ones_like(input_ids, dtype=torch.long)
+
+    if mask_fraction <= 0:
+        return attention_mask
+
+    # Always use content-only masking (question content between "Question:" and answer choices)
+    content_positions = identify_content_positions(input_ids, tokenizer)
+
+    # Calculate number of tokens to mask
+    num_mask = int(len(content_positions) * mask_fraction)
+
+    # Randomly select positions to mask
+    if num_mask > 0 and len(content_positions) > 0:
+        positions_to_mask = random.sample(content_positions, min(num_mask, len(content_positions)))
+        attention_mask[0, positions_to_mask] = 0  # 0 means "don't attend"
+
+    return attention_mask
+
+def identify_content_positions(input_ids, tokenizer):
+    """Identify positions that contain question content (not structural elements)."""
+    text = tokenizer.decode(input_ids[0], skip_special_tokens=False)
+    tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
+
+    # Find question content between "Question: " and first answer choice
+    question_start = None
+    question_end = None
+
+    for i, token in enumerate(tokens):
+        token_text = tokenizer.decode([input_ids[0][i]], skip_special_tokens=True)
+
+        # Find start of question content
+        if question_start is None and ('Question' in token_text or ':' in token_text):
+            question_start = i + 1  # Start after "Question:"
+
+        # Find end of question content (start of answer choices)
+        if question_start is not None and question_end is None:
+            # For MedMCQA, look for A, B, C, D (not E)
+            if token_text.strip() in ['A', 'B', 'C', 'D'] or token_text.strip().endswith('.'):
+                question_end = i
+                break
+
+    if question_start is None:
+        question_start = 0
+    if question_end is None:
+        question_end = len(tokens)
+
+    return list(range(question_start, question_end))
+
+
 # ===== LLAMA MODEL WRAPPER =====
 
 class MCal_LLaMAModel:
@@ -97,6 +207,46 @@ class MCal_LLaMAModel:
 
         return prob_dict
 
+    def get_choice_probabilities_with_attention_mask(self, prompt, attention_mask=None, num_options=4):
+        """Extract probabilities using custom attention mask."""
+        input_ids = self.tokenizer.encode(prompt, return_tensors="pt").to(self.model.device)
+
+        if attention_mask is not None:
+            # Ensure attention_mask matches input_ids length and is on correct device
+            if attention_mask.shape[1] != input_ids.shape[1]:
+                raise ValueError(f"Attention mask length {attention_mask.shape[1]} doesn't match input_ids length {input_ids.shape[1]}")
+            attention_mask = attention_mask.to(self.model.device)
+
+        with torch.no_grad():
+            # Pass custom attention_mask to model
+            outputs = self.model(input_ids, attention_mask=attention_mask)
+            logits = outputs.logits[:, -1, :]
+
+            # Define letter tokens map
+            if num_options == 4:
+                letter_tokens = {'ĠA': 'A', 'ĠB': 'B', 'ĠC': 'C', 'ĠD': 'D'}
+            elif num_options == 5:
+                letter_tokens = {'ĠA': 'A', 'ĠB': 'B', 'ĠC': 'C', 'ĠD': 'D', 'ĠE': 'E'}
+            else:
+                raise ValueError(f"Unsupported number of options: {num_options}")
+
+            # Get token IDs for letter tokens
+            letter_ids = self.tokenizer.convert_tokens_to_ids(list(letter_tokens.keys()))
+
+            # Extract logits for only these tokens
+            letter_logits = logits[0, letter_ids]
+
+            # Apply softmax to get probabilities
+            probs = torch.softmax(letter_logits, dim=0)
+
+            # Map to letter format
+            prob_dict = {}
+            letters = list(letter_tokens.values())
+            for i, letter in enumerate(letters):
+                prob_dict[letter] = probs[i].item()
+
+        return prob_dict
+
     def forward(self, prompts, num_options=4):
         """Process multiple prompts and return probability dictionaries."""
         results = []
@@ -111,7 +261,7 @@ class MCal_LLaMAModel:
 
 # ===== MEDMCQA DATASET UTILITIES =====
 
-def create_medmcqa_prompt(question_data, removal_fraction=0.0, prompt_type='default'):
+def create_medmcqa_prompt(question_data, removal_fraction=0.0, prompt_type='default', use_tokenizer=False, tokenizer=None):
     """Create a prompt for MedMCQA question following XAI-Benchmark pattern."""
 
     # Extract question and options from MedMCQA format
@@ -125,11 +275,16 @@ def create_medmcqa_prompt(question_data, removal_fraction=0.0, prompt_type='defa
 
     # Apply text ablation if specified
     if removal_fraction > 0:
-        question = replace_random_features(
-            question,
-            removal_fraction=removal_fraction,
-            replacement_token='UNKWORDZ'
-        )
+        if use_tokenizer and tokenizer is not None:
+            # Use token-level removal
+            question = remove_random_tokens_with_tokenizer(question, tokenizer, removal_fraction)
+        else:
+            # Use word-level replacement
+            question = replace_random_features(
+                question,
+                removal_fraction=removal_fraction,
+                replacement_token='UNKWORDZ'
+            )
 
     # Construct prompt based on type
     if prompt_type == 'COT':
@@ -371,6 +526,176 @@ def generate_fractionwise_predictions(
 
     return all_fraction_probs_np
 
+def generate_fractionwise_predictions_with_token_dropping(model, data, removal_fractions, prompt_type='default',
+                                                         batch_size=8, num_options=4, use_tokenizer=False):
+    """
+    Generate predictions for different removal fractions using either word replacement or token dropping.
+
+    Args:
+        model: LLaMA model instance
+        data: List of question data items
+        removal_fractions: List of fractions to test (e.g., [0.0, 0.1, 0.2, ...])
+        prompt_type: Type of prompt ('default', 'COT', 'Debiasing')
+        batch_size: Batch size for processing
+        num_options: Number of answer options (4 for MedMCQA)
+        use_tokenizer: If True, use token-level removal; if False, use word-level replacement
+
+    Returns:
+        numpy.ndarray: Array of shape (n_fractions, n_samples, n_options)
+    """
+    all_fraction_probs = []
+
+    print(f"Using {'token dropping' if use_tokenizer else 'word replacement'} strategy")
+
+    for removal_fraction in tqdm(removal_fractions, desc="Processing removal fractions"):
+        fraction_probs = []
+
+        # Process data in batches
+        for i in tqdm(range(0, len(data), batch_size),
+                     desc=f"Processing questions (removal fraction: {removal_fraction:.1f})",
+                     unit="batch", leave=False):
+            batch = data[i:i+batch_size]
+
+            # Construct prompts for the entire batch
+            prompts = [
+                create_medmcqa_prompt(
+                    question_data,
+                    removal_fraction=removal_fraction,
+                    prompt_type=prompt_type,
+                    use_tokenizer=use_tokenizer,
+                    tokenizer=model.tokenizer if use_tokenizer else None
+                ) for question_data in batch
+            ]
+
+            # Debug: Show example prompts for comparison
+            if len(data) <= 5 and removal_fraction == 0:
+                print(f"\n=== BASELINE FRACTION=0 DEBUG ===")
+                print(f"Baseline prompt (first item): {prompts[0][:200]}...")
+                print(f"use_tokenizer: {use_tokenizer}")
+                print("=== END BASELINE DEBUG ===\n")
+            elif len(data) <= 5 and removal_fraction > 0:
+                print(f"\n=== ABLATION FRACTION={removal_fraction} DEBUG ===")
+                print(f"Ablated prompt (first item): {prompts[0][:200]}...")
+                print(f"use_tokenizer: {use_tokenizer}")
+                print("=== END ABLATION DEBUG ===\n")
+
+            # Get model predictions
+            batch_top_tokens_and_probs = model(prompts, num_options=num_options)
+
+            # Map probabilities to list for each item in the batch
+            for top_tokens_and_probs in batch_top_tokens_and_probs:
+                prob_list = map_probs_to_list(top_tokens_and_probs, num_options=num_options)
+                if np.isnan(np.array(prob_list)).any():
+                    # Use uniform distribution as fallback
+                    fraction_probs.append(np.ones(num_options) * (1/num_options))
+                    continue
+                fraction_probs.append(prob_list)
+
+        all_fraction_probs.append(np.array(fraction_probs))
+
+        # Print mean probabilities for debugging
+        if len(fraction_probs) > 0:
+            mean_probs = np.mean(fraction_probs, axis=0)
+            print(f"  Fraction {removal_fraction:.1f} - Mean probabilities: {mean_probs}")
+
+    # Convert to numpy array with shape (n_fractions, n_samples, n_options)
+    all_fraction_probs_np = np.array(all_fraction_probs)
+
+    return all_fraction_probs_np
+
+def generate_fractionwise_predictions_with_attention_mask(
+    model, data, removal_fractions, prompt_type='default', batch_size=8, num_options=4
+):
+    """
+    Generate predictions for different removal fractions using attention masking on question content.
+
+    Args:
+        model: LLaMA model instance
+        data: List of question data items
+        removal_fractions: List of fractions to test (e.g., [0.0, 0.1, 0.2, ...])
+        prompt_type: Type of prompt ('default', 'COT', 'Debiasing')
+        batch_size: Batch size for processing
+        num_options: Number of answer options (4 for MedMCQA)
+
+    Returns:
+        numpy.ndarray: Array of shape (n_fractions, n_samples, n_options)
+    """
+    all_fraction_probs = []
+
+    print(f"Using attention masking strategy: content_only (question content)")
+    print(f"Preserving structural elements and answer choices")
+
+    for removal_fraction in tqdm(removal_fractions, desc="Processing removal fractions"):
+        fraction_probs = []
+
+        # Process data in batches
+        for i in tqdm(range(0, len(data), batch_size),
+                     desc=f"Processing questions (removal fraction: {removal_fraction:.1f})",
+                     unit="batch", leave=False):
+            batch = data[i:i+batch_size]
+
+            # Process each item in the batch (attention masks are per-item)
+            for question_data in batch:
+                # Create original prompt (no text modification)
+                prompt = create_medmcqa_prompt(
+                    question_data,
+                    removal_fraction=0.0,  # No text ablation with attention masking
+                    prompt_type=prompt_type
+                )
+
+                # Tokenize to get input_ids
+                input_ids = model.tokenizer.encode(prompt, return_tensors="pt")
+
+                # Create attention mask for this fraction (content-only)
+                attention_mask = create_random_attention_mask(
+                    input_ids,
+                    model.tokenizer,
+                    mask_fraction=removal_fraction
+                )
+
+                # Debug: Show example prompts and masking for small datasets
+                if len(data) <= 5 and removal_fraction == 0:
+                    print(f"\n=== BASELINE FRACTION=0 DEBUG ===")
+                    print(f"Baseline prompt (first item): {prompt[:200]}...")
+                    print(f"Input IDs shape: {input_ids.shape}")
+                    print(f"Attention mask: {attention_mask[0].tolist()}")
+                    print(f"Mask strategy: content_only")
+                    print("=== END BASELINE DEBUG ===\n")
+                elif len(data) <= 5 and removal_fraction > 0:
+                    print(f"\n=== ATTENTION MASK FRACTION={removal_fraction} DEBUG ===")
+                    tokens = model.tokenizer.convert_ids_to_tokens(input_ids[0])
+                    masked_tokens = [token if attention_mask[0][i] == 1 else '[MASKED]' for i, token in enumerate(tokens)]
+                    print(f"Masked tokens (first few): {masked_tokens[:20]}")
+                    print(f"Masking fraction: {(attention_mask[0] == 0).sum().item() / attention_mask.shape[1]:.2f}")
+                    print("=== END ATTENTION MASK DEBUG ===\n")
+
+                # Get probabilities with masked attention
+                probs = model.get_choice_probabilities_with_attention_mask(
+                    prompt, attention_mask=attention_mask, num_options=num_options
+                )
+
+                # Convert to list format
+                prob_list = map_probs_to_list(probs, num_options=num_options)
+
+                # Handle NaN values
+                if np.isnan(np.array(prob_list)).any():
+                    # Use uniform distribution as fallback
+                    fraction_probs.append(np.ones(num_options) * (1/num_options))
+                    continue
+
+                fraction_probs.append(prob_list)
+
+        all_fraction_probs.append(np.array(fraction_probs))
+
+        # Print mean probabilities for this fraction
+        if len(fraction_probs) > 0:
+            mean_probs = np.mean(fraction_probs, axis=0)
+            print(f"  Fraction {removal_fraction:.1f} - Mean probabilities: {mean_probs}")
+
+    # Convert to numpy array with shape (n_fractions, n_samples, n_options)
+    all_fraction_probs_np = np.array(all_fraction_probs)
+
+    return all_fraction_probs_np
 
 # ===== TESTING UTILITIES =====
 
