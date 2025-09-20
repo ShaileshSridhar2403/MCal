@@ -143,10 +143,10 @@ def main(args):
 
     # LoRA configuration
     lora_config = LoraConfig(
-        r=64,
-        lora_alpha=128,
+        r=32,
+        lora_alpha=64,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-        lora_dropout=0.05,
+        lora_dropout=0.1,
         bias="none",
         task_type="CAUSAL_LM"
     )
@@ -186,12 +186,12 @@ def main(args):
         per_device_eval_batch_size=args.batch_size,
         gradient_accumulation_steps=1,
         learning_rate=args.learning_rate,
-        weight_decay=1e-2,
+        weight_decay=args.weight_decay,
         lr_scheduler_type="cosine",
         warmup_ratio=0.1,
         logging_steps=10,
-        save_steps=100,
-        eval_steps=100,
+        save_steps=50,
+        eval_steps=50,
         eval_strategy="steps",
         save_total_limit=1,
         load_best_model_at_end=True,
@@ -202,7 +202,8 @@ def main(args):
         fp16=True,
         report_to="none",
         max_length=args.max_length,
-        completion_only_loss=True
+        completion_only_loss=True,
+        max_grad_norm=1.0
     )
 
     # Step 5: Create SFTTrainer with response template
@@ -263,12 +264,14 @@ if __name__ == "__main__":
                        help="Directory to save trained models")
 
     # Training arguments
-    parser.add_argument("--num_epochs", type=int, default=3,
+    parser.add_argument("--num_epochs", type=int, default=2,
                        help="Number of training epochs")
-    parser.add_argument("--batch_size", type=int, default=4,
+    parser.add_argument("--batch_size", type=int, default=32,
                        help="Training batch size")
-    parser.add_argument("--learning_rate", type=float, default=1e-4,
+    parser.add_argument("--learning_rate", type=float, default=1e-5,
                        help="Learning rate")
+    parser.add_argument("--weight_decay", type=float, default=1e-1,
+                       help="Weight decay for AdamW optimizer")
     parser.add_argument("--max_length", type=int, default=512,
                        help="Maximum sequence length")
 

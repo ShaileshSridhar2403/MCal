@@ -36,13 +36,19 @@ DATA_ROOT = PROJECT_ROOT / "data"
 # =============================================================================
 
 
-def mask_random_words(text, removal_fraction=0.15, replacement_token='UNKWORDZ'):
-    """Replace random words/tokens with a replacement token."""
+def mask_random_words(text, removal_fraction=0.15, replacement_token='UNKWORDZ', seed=None):
+    """Replace random words/tokens with a replacement token deterministically."""
+    if seed is not None:
+        random.seed(seed)
+
     tokens = text.split()
     num_replace = int(len(tokens) * removal_fraction)
 
     if num_replace > 0 and len(tokens) > 0:
-        indices_to_replace = random.sample(range(len(tokens)), min(num_replace, len(tokens)))
+        # Use deterministic sampling based on token count
+        indices = list(range(len(tokens)))
+        # Sort indices to ensure deterministic selection
+        indices_to_replace = sorted(indices[:min(num_replace, len(tokens))])
     else:
         indices_to_replace = []
 
@@ -85,7 +91,8 @@ def load_mri_clean(split='test', n_samples=None):
     dataset = datasets.ImageFolder(str(data_dir), transform=transform)
 
     if n_samples:
-        indices = random.sample(range(len(dataset)), min(n_samples, len(dataset)))
+        # Use deterministic subset - take first n_samples
+        indices = list(range(min(n_samples, len(dataset))))
         dataset = Subset(dataset, indices)
 
     return _dataset_to_tensors(dataset)
@@ -196,9 +203,9 @@ def load_chexpert_clean(split='test', n_samples=None):
     df = pd.read_csv(csv_file)
     df = df[df['Cardiomegaly'].isin([0.0, 1.0])]
 
-    # Sample if needed
+    # Take first max_samples deterministically
     if max_samples:
-        df = df.sample(n=min(max_samples, len(df)), random_state=42)
+        df = df.head(min(max_samples, len(df)))
 
     # Load images
     transform = transforms.Compose([
@@ -300,7 +307,8 @@ def load_breakhis_clean(split='test', n_samples=None):
     dataset = datasets.ImageFolder(str(data_dir), transform=transform)
 
     if n_samples:
-        indices = random.sample(range(len(dataset)), min(n_samples, len(dataset)))
+        # Use deterministic subset - take first n_samples
+        indices = list(range(min(n_samples, len(dataset))))
         dataset = Subset(dataset, indices)
 
     return _dataset_to_tensors(dataset)
@@ -389,14 +397,14 @@ def load_medqa_clean(split='test', n_samples=None):
     # Convert to list for sampling
     dataset_list = list(dataset)
 
-    # Apply sampling if needed
+    # Apply deterministic sampling if needed
     if n_samples and len(dataset_list) > n_samples:
-        random.shuffle(dataset_list)
+        # Take first n_samples without shuffling
         dataset_list = dataset_list[:n_samples]
     elif n_samples is None:
         # Default to 1000 samples if not specified
         if len(dataset_list) > 1000:
-            random.shuffle(dataset_list)
+            # Take first 1000 without shuffling
             dataset_list = dataset_list[:1000]
 
     texts = []
@@ -430,7 +438,8 @@ def load_medqa_ablated_prob(split='test', p_ablate=0.5, n_samples=None):
         modified_question = mask_random_words(
             question,
             removal_fraction=p_ablate,
-            replacement_token='UNKWORDZ'
+            replacement_token='UNKWORDZ',
+            seed=42  # Fixed seed for deterministic masking
         )
         modified_texts.append((modified_question, options))
 
@@ -466,7 +475,8 @@ def load_medqa_fractionwise(split='test', n_fractions=16, n_samples=None):
                 modified_question = mask_random_words(
                     question,
                     removal_fraction=fraction,
-                    replacement_token='UNKWORDZ'
+                    replacement_token='UNKWORDZ',
+                    seed=42  # Fixed seed for deterministic masking
                 )
                 modified_texts.append((modified_question, options))
             all_ablated_texts.append(modified_texts)
@@ -500,9 +510,9 @@ def load_medmcqa_clean(split='test', n_samples=None):
     # Convert to list for processing
     dataset_list = list(dataset)
 
-    # Apply sampling
+    # Apply deterministic sampling
     if n_samples and len(dataset_list) > n_samples:
-        random.shuffle(dataset_list)
+        # Take first n_samples without shuffling
         dataset_list = dataset_list[:n_samples]
 
     texts = []
@@ -534,7 +544,8 @@ def load_medmcqa_ablated_prob(split='test', p_ablate=0.5, n_samples=None):
         modified_question = mask_random_words(
             question,
             removal_fraction=p_ablate,
-            replacement_token='UNKWORDZ'
+            replacement_token='UNKWORDZ',
+            seed=42  # Fixed seed for deterministic masking
         )
         modified_texts.append((modified_question, options))
 
@@ -566,7 +577,8 @@ def load_medmcqa_fractionwise(split='test', n_fractions=16, n_samples=None):
                 modified_question = mask_random_words(
                     question,
                     removal_fraction=fraction,
-                    replacement_token='UNKWORDZ'
+                    replacement_token='UNKWORDZ',
+                    seed=42  # Fixed seed for deterministic masking
                 )
                 modified_texts.append((modified_question, options))
             all_ablated_texts.append(modified_texts)
