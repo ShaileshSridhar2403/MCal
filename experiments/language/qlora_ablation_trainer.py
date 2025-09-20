@@ -171,8 +171,10 @@ def main():
     )
 
     logger.info("Training completed successfully!")
-    logger.info(f"Model saved to: {args.output_dir}")
-    logger.info(f"To use this model, load it with MCal_QLoRA_Model('{args.base_model}', '{args.output_dir}')")
+    logger.info(f"LoRA adapters saved to: {args.output_dir}")
+    logger.info(f"Merged model saved to: {args.output_dir}/merged_model")
+    logger.info(f"To use the adapter model, load it with MCal_QLoRA_Model('{args.base_model}', '{args.output_dir}')")
+    logger.info(f"To use the merged model, load it directly from '{args.output_dir}/merged_model'")
 
 if __name__ == "__main__":
     main()

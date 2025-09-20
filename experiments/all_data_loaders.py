@@ -36,7 +36,7 @@ DATA_ROOT = PROJECT_ROOT / "data"
 # =============================================================================
 
 
-def mask_random_words(text, removal_fraction=0.15, replacement_token='[MASK]'):
+def mask_random_words(text, removal_fraction=0.15, replacement_token='UNKWORDZ'):
     """Replace random words/tokens with a replacement token."""
     tokens = text.split()
     num_replace = int(len(tokens) * removal_fraction)
@@ -430,7 +430,7 @@ def load_medqa_ablated_prob(split='test', p_ablate=0.5, n_samples=None):
         modified_question = mask_random_words(
             question,
             removal_fraction=p_ablate,
-            replacement_token='[MASK]'
+            replacement_token='UNKWORDZ'
         )
         modified_texts.append((modified_question, options))
 
@@ -466,7 +466,7 @@ def load_medqa_fractionwise(split='test', n_fractions=16, n_samples=None):
                 modified_question = mask_random_words(
                     question,
                     removal_fraction=fraction,
-                    replacement_token='[MASK]'
+                    replacement_token='UNKWORDZ'
                 )
                 modified_texts.append((modified_question, options))
             all_ablated_texts.append(modified_texts)
@@ -534,7 +534,7 @@ def load_medmcqa_ablated_prob(split='test', p_ablate=0.5, n_samples=None):
         modified_question = mask_random_words(
             question,
             removal_fraction=p_ablate,
-            replacement_token='[MASK]'
+            replacement_token='UNKWORDZ'
         )
         modified_texts.append((modified_question, options))
 
@@ -566,7 +566,7 @@ def load_medmcqa_fractionwise(split='test', n_fractions=16, n_samples=None):
                 modified_question = mask_random_words(
                     question,
                     removal_fraction=fraction,
-                    replacement_token='[MASK]'
+                    replacement_token='UNKWORDZ'
                 )
                 modified_texts.append((modified_question, options))
             all_ablated_texts.append(modified_texts)
