@@ -17,7 +17,7 @@ from .loaders import (
     MRILoader,
     ChexPertLoader,
     ImageNetLoader,
-    ImageNetteLoader,
+    # ImageNetteLoader,
     MedMCQALoader,
     MedQALoader,
     AI2ARCLoader,
