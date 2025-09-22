@@ -1,0 +1,26 @@
+{
+    "token_drop": {
+        "kl_transformed_mean_prob": 0.11663634330034256,
+        "kl_transformed_std_prob": 0.0,
+        "kl_transformed_mean_onehot": 0.7497798800468445,
+        "kl_transformed_std_onehot": 0.0,
+        "fraction_wise_results_transformed": {
+            "mean_prob": [
+                0.009553000330924988,
+                0.22371968626976013
+            ],
+            "std_prob": [
+                0.0,
+                0.0
+            ],
+            "mean_argmax": [
+                0.7497798800468445,
+                0.7497798800468445
+            ],
+            "std_argmax": [
+                0.0,
+                0.0
+            ]
+        }
+    }
+}

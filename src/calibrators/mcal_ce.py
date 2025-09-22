@@ -39,6 +39,40 @@ class ResidualBlock(nn.Module):
         return x + self.module(x)
 
 
+class SimpleMCalCE(nn.Module):
+    """Simple MCal calibration model using cross-entropy loss."""
+    def __init__(self, num_classes: int):
+        super().__init__()
+        self.head = nn.Linear(num_classes, num_classes)
+    
+    def forward(self, ablated_logits: torch.Tensor) -> torch.Tensor:
+        return self.head(ablated_logits)
+
+    def fit(
+        self,
+        ablated_logits: torch.Tensor,
+        target_labels: torch.Tensor,
+        max_steps: int = 5000,
+        lr: float = 1e-3,
+        verbose: bool = False
+    ) -> Dict[str, Any]:
+        optimizer = optim.Adam(self.parameters(), lr=lr)
+        stats = {"loss": [], "acc": []}
+        pbar = tqdm(range(max_steps), desc="SimpleMCalCE Training") if verbose else range(max_steps)
+        for step in pbar:
+            optimizer.zero_grad()
+            calibrated_logits = self.forward(ablated_logits)
+            loss = nn.CrossEntropyLoss()(calibrated_logits, target_labels)
+            loss.backward()
+            optimizer.step()
+            acc = (calibrated_logits.argmax(dim=1) == target_labels).float().mean()
+            stats["loss"].append(loss.item())
+            stats["acc"].append(acc.item())
+            if verbose:
+                pbar.set_description(f"Loss: {loss.item():.3e}, Acc: {acc:.3f}")
+        return stats
+
+
 class MCal_CE(BaseCalibrator):
     """MCal calibration model using cross-entropy loss.
     

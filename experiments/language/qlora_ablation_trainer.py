@@ -32,6 +32,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 def main():
+    os.environ["NCCL_P2P_DISABLE"] = "1"
+
+    
     parser = argparse.ArgumentParser(description="Train QLoRA model on binomially ablated medical QA data")
 
     # Dataset arguments

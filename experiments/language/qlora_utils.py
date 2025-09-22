@@ -20,10 +20,18 @@ from transformers import (
     BitsAndBytesConfig,
     DataCollatorForLanguageModeling
 )
+
+# from trl import SFTTrainer, SFTConfig
+
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, PeftModel
 from tqdm import tqdm
 from datasets import Dataset
 import logging
+
+
+# Import prompt creation functions
+from medqa_utils import create_medqa_prompt
+from medmcqa_utils import create_medmcqa_prompt
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -55,31 +63,38 @@ def create_binomial_ablated_dataset(questions, p_remove_range=(0.0, 0.9), preser
 
     for question_data in tqdm(questions, desc="Creating binomially ablated training data"):
         # Sample ablation rate for this example
-        p_remove = random.uniform(min_ablation, max_ablation)
+        p_remove = np.random.binomial(1000,0.5) / 1000 #1000 is arbitrary large number to obtain a smooth fraction
 
-        # Create the full prompt
-        if 'options' in question_data or 'opa' in question_data:
-            # Determine format and create prompt
-            if 'options' in question_data:  # MedQA format
-                prompt = create_medqa_training_prompt(question_data)
+        # Determine dataset type and create ablated prompt using internal ablation
+        if 'options' in question_data or 'answer_idx' in question_data:
+            # MedQA format - use create_medqa_prompt with removal_fraction
+            ablated_prompt = create_medqa_prompt(question_data, removal_fraction=p_remove)
+            original_prompt = create_medqa_prompt(question_data, removal_fraction=0.0)
+
+            # Get answer key - convert to letter if it's an index
+            if isinstance(question_data.get('answer_idx'), int):
+                answer_key = chr(ord('A') + question_data['answer_idx'])
+            else:
                 answer_key = question_data.get('answer_idx', 'A')
-            else:  # MedMCQA format
-                prompt = create_medmcqa_training_prompt(question_data)
-                # Convert 1-indexed to letter
-                cop = question_data.get('cop', 1)
-                answer_key = chr(ord('A') + cop - 1)
+
+        elif 'cop' in question_data:
+            # MedMCQA format - use create_medmcqa_prompt with removal_fraction
+            ablated_prompt = create_medmcqa_prompt(question_data, removal_fraction=p_remove)
+            original_prompt = create_medmcqa_prompt(question_data, removal_fraction=0.0)
+
+            # Convert 1-indexed cop to letter
+            cop = question_data.get('cop', 1)
+            answer_key = chr(ord('A') + cop - 1)
+
         else:
             logger.warning(f"Unknown question format: {question_data.keys()}")
             continue
-
-        # Apply binomial ablation to the question content
-        ablated_prompt = apply_binomial_ablation(prompt, p_remove, preserve_structure)
 
         # Create training pair
         training_data.append({
             'input': ablated_prompt,
             'output': answer_key,
-            'original_prompt': prompt,
+            'original_prompt': original_prompt,
             'ablation_rate': p_remove
         })
 
@@ -278,7 +293,7 @@ def prepare_training_data(training_data, tokenizer, max_length=512):
         tokenized = tokenizer(
             examples["text"],
             truncation=True,
-            padding=False,
+            padding="max_length",
             max_length=max_length,
             return_tensors=None
         )
@@ -443,6 +458,7 @@ def train_qlora_model(model, tokenizer, training_dataset, training_args):
     trainer.save_model()
     logger.info(f"LoRA adapters saved to {training_args.output_dir}")
 
+<<<<<<< HEAD
     # Also save the merged model
     merged_output_dir = Path(training_args.output_dir) / "merged_model"
     merged_output_dir.mkdir(exist_ok=True)
