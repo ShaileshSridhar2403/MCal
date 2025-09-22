@@ -107,13 +107,14 @@ def load_clean_physionet_data(missingness_dir, n_samples=1000):
     return df_balanced
 
 
-def train_xgboost_model(X_train, y_train):
+def train_xgboost_model(X_train, y_train, missing_value=None):
     """
-    Train XGBoost model - fast enough to retrain every time.
+    Train XGBoost model with optional custom missing value handling.
 
     Args:
         X_train: Training features
         y_train: Training labels
+        missing_value: Value to treat as missing (e.g., -10, np.nan)
 
     Returns:
         Trained XGBoost model
@@ -128,9 +129,15 @@ def train_xgboost_model(X_train, y_train):
         'enable_categorical': False
     }
 
-    model = xgb.XGBClassifier(**params)
+    # Add missing value parameter if specified
+    if missing_value is not None:
+        model = xgb.XGBClassifier(missing=missing_value, **params)
+        print(f"Trained XGBoost model on {len(X_train)} samples with missing={missing_value}")
+    else:
+        model = xgb.XGBClassifier(**params)
+        print(f"Trained XGBoost model on {len(X_train)} samples")
+
     model.fit(X_train, y_train)
-    print(f"Trained XGBoost model on {len(X_train)} samples")
     return model
 
 
@@ -164,15 +171,17 @@ def apply_missing_data_simulation(data, removal_fraction):
 
 
 def load_physionet_data(model_type="vanilla", fill_value="mean", n_samples=1000, n_fractions=10,
-                       missingness_dir="/home/antonxue/shailesh/MCal/data/tabular/missingness_levels"):
+                       missingness_dir="/home/antonxue/shailesh/MCal/data/tabular/missingness_levels",
+                       missing_value=None):
     """
     Simple, clean PhysioNet data loading following MRI pattern.
 
     Args:
         model_type: "vanilla" or "retrained" - controls training data selection
-        fill_value: "mean", "nan", or "zero" - how to handle missing values during prediction
+        fill_value: "mean", "nan", "zero", or "-10" - how to handle missing values during prediction
         n_samples: Number of samples to use
         n_fractions: Number of ablation fractions
+        missing_value: Value to treat as missing in XGBoost (e.g., -10, np.nan)
 
     Returns:
         (predictions, labels): Torch tensors with shapes (k, n, c) and (n,)
@@ -210,7 +219,7 @@ def load_physionet_data(model_type="vanilla", fill_value="mean", n_samples=1000,
     X_train = imputer.fit_transform(X_train)
 
     # 3. Train model
-    model = train_xgboost_model(X_train, y_clean)
+    model = train_xgboost_model(X_train, y_clean, missing_value=missing_value)
 
     # 4. Generate predictions across ablation fractions
     ablation_fractions = [i/n_fractions for i in range(n_fractions)]
@@ -237,6 +246,9 @@ def load_physionet_data(model_type="vanilla", fill_value="mean", n_samples=1000,
         elif fill_value == "nan":
             # Keep NaNs for XGBoost native missing value handling
             processed_data = data_with_missing.values  # Keep as-is
+        elif fill_value == "-10":
+            # Fill with -10 for custom XGBoost missing value handling
+            processed_data = data_with_missing.fillna(-10).values
         else:
             raise ValueError(f"Invalid fill_value: {fill_value}")
 

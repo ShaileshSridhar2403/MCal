@@ -181,6 +181,12 @@ def apply_transform(outputs, labels, method, device=None, **kwargs):
     elif method == 'optimized_lambda':
         return apply_optimized_lambda_transform(outputs, device, **kwargs)
 
+    elif method == 'replace':
+        return outputs  # No transformation - zero-fill applied during data generation
+
+    elif method == 'archmod':
+        return apply_archmod_transform(outputs, device, **kwargs)
+
     else:
         print(f"Unknown method: {method}")
         return outputs
@@ -338,12 +344,17 @@ def apply_optimized_lambda_transform(outputs, device, **kwargs):
     return outputs
 
 
+def apply_archmod_transform(outputs, device, **kwargs):
+    """Apply architecture modification transform using custom missing value (-10) handling."""
+    return outputs  # No transformation - custom missing value handling applied during data generation
+
+
 def process_physionet_dataset(methods=None, device="cuda", save_dir="./results", n_runs=3,
                             n_samples=1000, n_fractions=10):
     """Process PhysioNet dataset and generate KL benchmarks."""
 
     if methods is None:
-        methods = ['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp', 'retrain']
+        methods = ['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp', 'retrain', 'replace', 'archmod']
 
     device = torch.device(device)
 
@@ -398,6 +409,35 @@ def process_physionet_dataset(methods=None, device="cuda", save_dir="./results",
             # Use retrain labels if no other labels available
             if 'labels' not in locals():
                 labels = retrain_labels
+
+        # Replace method uses vanilla model with zero-fill
+        if 'replace' in methods:
+            replace_predictions, replace_labels = load_physionet_data(
+                model_type="vanilla",    # Same model as standard methods
+                fill_value="zero",       # BUT zero-fill instead of mean
+                n_samples=n_samples,
+                n_fractions=n_fractions
+            )
+            method_predictions['replace'] = replace_predictions
+            print(f"Loaded replace data - Predictions: {replace_predictions.shape}, Labels: {replace_labels.shape}")
+            # Use replace labels if no other labels available
+            if 'labels' not in locals():
+                labels = replace_labels
+
+        # ArchMod method uses vanilla model with -10 fill and custom missing parameter
+        if 'archmod' in methods:
+            archmod_predictions, archmod_labels = load_physionet_data(
+                model_type="vanilla",    # Same model architecture
+                fill_value="-10",        # Fill missing with -10
+                n_samples=n_samples,
+                n_fractions=n_fractions,
+                missing_value=-10        # Tell XGBoost that -10 = missing
+            )
+            method_predictions['archmod'] = archmod_predictions
+            print(f"Loaded archmod data - Predictions: {archmod_predictions.shape}, Labels: {archmod_labels.shape}")
+            # Use archmod labels if no other labels available
+            if 'labels' not in locals():
+                labels = archmod_labels
 
         # Process each method
         for method in methods:
@@ -464,7 +504,7 @@ def main():
     """Main function with argument parsing."""
     parser = argparse.ArgumentParser(description="PhysioNet Tabular KL Divergence Benchmark")
     parser.add_argument("--methods", nargs="+",
-                       choices=['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp', 'retrain'],
+                       choices=['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp', 'retrain', 'replace', 'archmod'],
                        default=['baseline', 'mcal_ce', 'retrain'],
                        help="Methods to benchmark")
     parser.add_argument("--device", default="cuda", help="Device to use")
