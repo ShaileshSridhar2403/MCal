@@ -146,11 +146,10 @@ def main(args):
     trainer.save_model()
 
     merged_output_dir = Path(args.output_dir) / "merged_model"
-    from peft import merge_and_unload
-
     merged_output_dir.mkdir(exist_ok=True)
+
     # Merge LoRA weights into the base model and unload adapters
-    merged_model = merge_and_unload(model)
+    merged_model = trainer.model.merge_and_unload()
     merged_model.save_pretrained(str(merged_output_dir))
     tokenizer.save_pretrained(str(merged_output_dir))
     logger.info(f"Merged model saved to {merged_output_dir}")

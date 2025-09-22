@@ -7,6 +7,25 @@ import torch.nn as nn
 import numpy as np
 import logging
 
+try:
+    from ..utils.device_utils import get_device_info, setup_device_config
+except ImportError:
+    # Fallback if device_utils is not available
+    def get_device_info():
+        return {
+            'device_count': torch.cuda.device_count() if torch.cuda.is_available() else 0,
+            'device_type': 'cuda' if torch.cuda.is_available() else 'cpu',
+            'is_available': torch.cuda.is_available()
+        }
+    
+    def setup_device_config(num_processes=None, device_preference='auto'):
+        device_info = get_device_info()
+        return {
+            'device_type': device_info['device_type'],
+            'num_processes': num_processes or (device_info['device_count'] if device_info['is_available'] else 1),
+            'device_info': device_info
+        }
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,19 +40,31 @@ class BaseModel(ABC, nn.Module):
         self,
         num_classes: int,
         model_name: str = "base_model",
-        device: Optional[torch.device] = None
+        device: Optional[torch.device] = None,
+        auto_device_config: bool = True
     ):
         """Initialize base model.
         
         Args:
             num_classes: Number of output classes
             model_name: Name of the model
-            device: Device to run model on
+            device: Device to run model on (if None and auto_device_config=True, auto-detect)
+            auto_device_config: Whether to automatically configure device based on available hardware
         """
         super().__init__()
         self.num_classes = num_classes
         self.model_name = model_name
-        self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # Device configuration
+        if device is not None:
+            self.device = device
+        elif auto_device_config:
+            device_config = setup_device_config()
+            self.device = torch.device(device_config['device_type'])
+            self.device_config = device_config
+        else:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.device_config = None
         
         # Move model to device
         self.to(self.device)
@@ -44,6 +75,14 @@ class BaseModel(ABC, nn.Module):
             "num_classes": num_classes,
             "device": str(self.device)
         }
+        
+        # Add device info to metadata if available
+        if hasattr(self, 'device_config') and self.device_config:
+            self.model_info.update({
+                "device_count": self.device_config['device_info']['device_count'],
+                "device_type": self.device_config['device_type'],
+                "num_processes": self.device_config['num_processes']
+            })
         
         # Training state
         self.is_trained = False
