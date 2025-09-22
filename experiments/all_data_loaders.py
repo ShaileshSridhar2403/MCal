@@ -15,10 +15,11 @@ import torchvision.transforms as transforms
 from torchvision import datasets
 import random
 from tqdm import tqdm
-import json
 import pandas as pd
 from PIL import Image
 import datasets as huggingface_datasets
+from transformers import AutoTokenizer
+
 
 # Add project to path
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -34,30 +35,6 @@ DATA_ROOT = PROJECT_ROOT / "data"
 # =============================================================================
 # STANDALONE UTILITY FUNCTIONS (previously imported from utils)
 # =============================================================================
-
-
-def mask_random_words(text, removal_fraction=0.15, replacement_token='UNKWORDZ', seed=None):
-    """Replace random words/tokens with a replacement token deterministically."""
-    if seed is not None:
-        random.seed(seed)
-
-    tokens = text.split()
-    num_replace = int(len(tokens) * removal_fraction)
-
-    if num_replace > 0 and len(tokens) > 0:
-        # Use deterministic sampling based on token count
-        indices = list(range(len(tokens)))
-        # Sort indices to ensure deterministic selection
-        indices_to_replace = sorted(indices[:min(num_replace, len(tokens))])
-    else:
-        indices_to_replace = []
-
-    modified_tokens = [replacement_token if i in indices_to_replace else token for i, token in enumerate(tokens)]
-    modified_text = ' '.join(modified_tokens)
-
-    return modified_text
-
-
 
 # =============================================================================
 # MRI DATASET
@@ -373,10 +350,6 @@ def load_medqa_clean(split='test', n_samples=None):
     """
     Load clean MedQA dataset without any text manipulation.
     Loads from HuggingFace: bigbio/med_qa (5-option format).
-
-    Returns:
-        texts: List of (question, options) tuples
-        labels: numpy array of correct answer indices
     """
     # Map split names for HuggingFace
     if split == 'dev' or split == 'test':
@@ -394,94 +367,62 @@ def load_medqa_clean(split='test', n_samples=None):
         trust_remote_code=True
     )
 
-    # Convert to list for sampling
-    dataset_list = list(dataset)
+    if n_samples:
+        dataset = dataset.select(range(min(n_samples, len(dataset))))
 
-    # Apply deterministic sampling if needed
-    if n_samples and len(dataset_list) > n_samples:
-        # Take first n_samples without shuffling
-        dataset_list = dataset_list[:n_samples]
-    elif n_samples is None:
-        # Default to 1000 samples if not specified
-        if len(dataset_list) > 1000:
-            # Take first 1000 without shuffling
-            dataset_list = dataset_list[:1000]
-
-    texts = []
-    labels = []
-
-    for item in dataset_list:
-        # Convert options list to dict format
-        options_dict = {}
-        for opt in item['options']:
-            options_dict[opt['key']] = opt['value']
-
-        texts.append((item['question'], options_dict))
-        # Convert answer letter to index (A=0, B=1, C=2, D=3, E=4)
-        labels.append(ord(item['answer_idx']) - ord('A'))
-
-    return texts, torch.tensor(labels, dtype=torch.long)
+    return dataset
 
 
 def load_medqa_ablated_prob(split='test', p_ablate=0.5, n_samples=None):
     """
     Load MedQA with probabilistic token removal.
-
-    Returns:
-        texts: List of (modified_question, options) tuples
-        labels: numpy array of correct answer indices
     """
-    texts, labels = load_medqa_clean(split, n_samples)
-
-    modified_texts = []
-    for question, options in texts:
-        modified_question = mask_random_words(
-            question,
-            removal_fraction=p_ablate,
+    dataset = load_medqa_clean(split, n_samples)
+    return dataset.map(lambda x: {
+        'question': [_mask_random_words_prob(
+            q,
             replacement_token='UNKWORDZ',
-            seed=42  # Fixed seed for deterministic masking
-        )
-        modified_texts.append((modified_question, options))
+            mask_prob=p_ablate,
+            seed=42
+        ) for q in x['question']],
+    }, batched=True)
 
-    return modified_texts, labels
 
 
 def load_medqa_ablated_exact(split='test', fraction_ablate=0.5, n_samples=None):
     """
     Load MedQA with exact fraction of tokens removed.
     """
-    return load_medqa_ablated_prob(split, fraction_ablate, n_samples)
+    dataset = load_medqa_clean(split, n_samples)
+    return dataset.map(lambda x: {
+        'question': [_mask_random_words_exact(
+            q,
+            replacement_token='UNKWORDZ',
+            mask_prob=fraction_ablate,
+            seed=42
+        ) for q in x['question']],
+    }, batched=True)
 
 
 def load_medqa_fractionwise(split='test', n_fractions=16, n_samples=None):
     """
     Load MedQA with multiple ablation fractions.
-
-    Returns:
-        texts: List of n_fractions lists, each containing (question, options) tuples
-        labels: numpy array of correct answer indices
     """
-    clean_texts, labels = load_medqa_clean(split, n_samples)
+    dataset = load_medqa_clean(split, n_samples)
 
-    all_ablated_texts = []
+    modified_datasets = [
+        dataset.map(lambda x: {
+            'question': [_mask_random_words_exact(
+                q,
+                replacement_token='UNKWORDZ',
+                mask_prob=i / n_fractions,
+                seed=42
+            ) for q in x['question']],
+        }, batched=True)
+        for i in range(n_fractions)
+    ]
 
-    for i in range(n_fractions):
-        fraction = i / n_fractions
-        if fraction == 0:
-            all_ablated_texts.append(clean_texts)
-        else:
-            modified_texts = []
-            for question, options in clean_texts:
-                modified_question = mask_random_words(
-                    question,
-                    removal_fraction=fraction,
-                    replacement_token='UNKWORDZ',
-                    seed=42  # Fixed seed for deterministic masking
-                )
-                modified_texts.append((modified_question, options))
-            all_ablated_texts.append(modified_texts)
-
-    return all_ablated_texts, labels
+    return modified_datasets
 
 
 # =============================================================================
@@ -491,10 +432,7 @@ def load_medqa_fractionwise(split='test', n_fractions=16, n_samples=None):
 def load_medmcqa_clean(split='test', n_samples=None):
     """
     Load clean MedMCQA dataset without any text manipulation.
-
-    Returns:
-        texts: List of (question, options_dict) tuples
-        labels: numpy array of correct answer indices (0-indexed)
+    Returns HuggingFace dataset.
     """
     # Map split names
     if split == 'test':
@@ -506,90 +444,65 @@ def load_medmcqa_clean(split='test', n_samples=None):
 
     # Load from HuggingFace datasets
     dataset = huggingface_datasets.load_dataset("openlifescienceai/medmcqa", split=hf_split, trust_remote_code=True)
+    if n_samples:
+        dataset = dataset.select(range(min(n_samples, len(dataset))))
 
-    # Convert to list for processing
-    dataset_list = list(dataset)
-
-    # Apply deterministic sampling
-    if n_samples and len(dataset_list) > n_samples:
-        # Take first n_samples without shuffling
-        dataset_list = dataset_list[:n_samples]
-
-    texts = []
-    labels = []
-
-    for item in dataset_list:
-        # HuggingFace format has: 'question', 'opa', 'opb', 'opc', 'opd', 'cop'
-        # Create options dict for consistency with MedQA format
-        options = {
-            'A': item['opa'],
-            'B': item['opb'],
-            'C': item['opc'],
-            'D': item['opd']
-        }
-        texts.append((item['question'], options))
-        labels.append(item['cop'])  # 0-indexed: 0=A, 1=B, 2=C, 3=D
-
-    return texts, torch.tensor(labels, dtype=torch.long)
-
+    return dataset
 
 def load_medmcqa_ablated_prob(split='test', p_ablate=0.5, n_samples=None):
     """
     Load MedMCQA with probabilistic token removal.
     """
-    texts, labels = load_medmcqa_clean(split, n_samples)
-
-    modified_texts = []
-    for question, options in texts:
-        modified_question = mask_random_words(
-            question,
-            removal_fraction=p_ablate,
+    dataset = load_medmcqa_clean(split, n_samples)
+    return dataset.map(lambda x: {
+        'question': [_mask_random_words_prob(
+            q,
             replacement_token='UNKWORDZ',
-            seed=42  # Fixed seed for deterministic masking
-        )
-        modified_texts.append((modified_question, options))
-
-    return modified_texts, labels
-
+            mask_prob=p_ablate,
+            seed=42
+        ) for q in x['question']],
+    }, batched=True)
+    
 
 def load_medmcqa_ablated_exact(split='test', fraction_ablate=0.5, n_samples=None):
     """
     Load MedMCQA with exact fraction of tokens removed.
     """
-    return load_medmcqa_ablated_prob(split, fraction_ablate, n_samples)
+    dataset = load_medmcqa_clean(split, n_samples)
+    return dataset.map(lambda x: {
+        'question': [_mask_random_words_exact(
+            q,
+            replacement_token='UNKWORDZ',
+            mask_prob=fraction_ablate,
+            seed=42
+        ) for q in x['question']],
+    }, batched=True)
 
 
 def load_medmcqa_fractionwise(split='test', n_fractions=16, n_samples=None):
     """
     Load MedMCQA with multiple ablation fractions.
     """
-    clean_texts, labels = load_medmcqa_clean(split, n_samples)
+    dataset = load_medmcqa_clean(split, n_samples)
 
-    all_ablated_texts = []
+    modified_datasets = [
+        dataset.map(lambda x: {
+            'question': [_mask_random_words_exact(
+                q,
+                replacement_token='UNKWORDZ',
+                mask_prob=i / n_fractions,
+                seed=42
+            ) for q in x['question']],
+        }, batched=True)
+        for i in range(n_fractions)
+    ]
 
-    for i in range(n_fractions):
-        fraction = i / n_fractions
-        if fraction == 0:
-            all_ablated_texts.append(clean_texts)
-        else:
-            modified_texts = []
-            for question, options in clean_texts:
-                modified_question = mask_random_words(
-                    question,
-                    removal_fraction=fraction,
-                    replacement_token='UNKWORDZ',
-                    seed=42  # Fixed seed for deterministic masking
-                )
-                modified_texts.append((modified_question, options))
-            all_ablated_texts.append(modified_texts)
-
-    return all_ablated_texts, labels
+    return modified_datasets
 
 
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
-
 
 
 def _dataset_to_tensors(dataset):
@@ -610,3 +523,107 @@ def _dataset_to_tensors(dataset):
 
     return images, labels
 
+
+def _mask_random_words_prob(text, mask_prob=0.15, replacement_token='UNKWORDZ', seed=None):
+    """Replace random words/tokens with a replacement token."""
+    if seed is not None:
+        random.seed(seed)
+    tokens = text.split()
+    modified_tokens = [replacement_token if random.random() < mask_prob else token for token in tokens]
+    return ' '.join(modified_tokens)
+
+
+def _mask_random_words_exact(text, mask_prob=0.15, replacement_token='UNKWORDZ', seed=None):
+    """Replace exactly mask_prob fraction of words/tokens with a replacement token."""
+    if seed is not None:
+        random.seed(seed)
+    tokens = text.split()
+
+    if len(tokens) == 0:
+        return text
+
+    # Calculate number of tokens to replace, ensuring it's within valid bounds
+    num_to_replace = max(0, min(len(tokens), int(len(tokens) * mask_prob)))
+
+    if num_to_replace == 0:
+        return text
+
+    replace_indices = random.sample(range(len(tokens)), num_to_replace)
+    modified_tokens = [replacement_token if i in replace_indices else token for i, token in enumerate(tokens)]
+
+    return ' '.join(modified_tokens)
+
+
+def tokenize_and_mask_medical_qa(example, dataset_type, tokenizer=None, return_prompt=False):
+    """
+    Tokenizes the input text and creates a labels column for completion-only loss.
+    This version constructs the final token sequence manually to ensure
+    that the prompt/completion split is perfectly accurate.
+    """
+
+    if tokenizer is None:
+        tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B", trust_remote_code=True)
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.padding_side = "left"
+
+    # 1. Format the prompt and completion strings
+    if dataset_type == "medqa":
+        question = example['question']
+        answer_key = example['answer_idx']
+        options_dict = {opt['key']: opt['value'] for opt in example['options']}
+        
+        options_text = ""
+        for letter in ['A', 'B', 'C', 'D', 'E']:
+            if letter in options_dict:
+                options_text += f"{letter}. {options_dict[letter]}\n"
+    
+    elif dataset_type == "medmcqa":
+        question = example['question']
+        correct_option_index = int(example['cop'])
+        answer_key = ['A', 'B', 'C', 'D'][correct_option_index]
+        options_text = (
+            f"A. {example['opa']}\n"
+            f"B. {example['opb']}\n"
+            f"C. {example['opc']}\n"
+            f"D. {example['opd']}\n"
+        )
+    else:
+        raise ValueError(f"Unknown dataset type: {dataset_type}")
+
+    # Note the space at the end of the prompt is important for some tokenizers
+    prompt = f"Question: {question}\n\nOptions:\n{options_text}\nAnswer: "
+    completion = f"{answer_key}"
+    
+    # 2. Tokenize parts separately
+    # add_special_tokens=False is crucial to prevent tokenizer from adding BOS/EOS tokens in the middle
+    prompt_tokens = tokenizer(prompt, add_special_tokens=False)
+    completion_tokens = tokenizer(completion, add_special_tokens=False)
+
+    # 3. Manually construct the full token sequences
+    input_ids = prompt_tokens['input_ids'] + completion_tokens['input_ids']
+    attention_mask = prompt_tokens['attention_mask'] + completion_tokens['attention_mask']
+    
+    # 4. Manually construct the labels array
+    # We mask the prompt tokens with -100 and use the completion tokens as labels
+    labels = ([-100] * len(prompt_tokens['input_ids'])) + completion_tokens['input_ids']
+    
+    # The SFTTrainer expects these specific column names
+    output = {
+        "input_ids": input_ids,
+        "attention_mask": attention_mask,
+        "labels": labels,
+    }
+
+    if return_prompt:
+        output['prompt'] = prompt
+        output['completion'] = completion
+
+    return output
+
+
+def tokenize_and_mask_medqa(example, tokenizer=None):
+    return tokenize_and_mask_medical_qa(example, "medqa", tokenizer)
+
+
+def tokenize_and_mask_medmcqa(example, tokenizer=None):
+    return tokenize_and_mask_medical_qa(example, "medmcqa", tokenizer)
