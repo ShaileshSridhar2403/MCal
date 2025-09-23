@@ -9,8 +9,9 @@ Just loads raw data - no models, no predictions, just data.
 import sys
 from pathlib import Path
 import torch
+import torch.nn.functional as F
 import numpy as np
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader, Subset, Dataset
 import torchvision.transforms as transforms
 from torchvision import datasets
 import random
@@ -33,12 +34,129 @@ DATA_ROOT = PROJECT_ROOT / "data"
 
 
 # =============================================================================
-# STANDALONE UTILITY FUNCTIONS (previously imported from utils)
-# =============================================================================
-
-# =============================================================================
 # MRI DATASET
 # =============================================================================
+
+
+def _mask_random_patches_prob(image, mask_prob=0.5, patch_size=16, fill_val=0, seed=None):
+    """Alternative implementation using F.interpolate for patch masking."""
+    if seed is not None:
+        torch.manual_seed(seed)
+        random.seed(seed)
+
+    C, H, W = image.shape
+    assert H % patch_size == 0 and W % patch_size == 0, f"Image dimensions must be multiples of patch_size {patch_size}"
+    n_patches_h, n_patches_w = H // patch_size, W // patch_size
+    patch_mask = torch.rand(n_patches_h, n_patches_w) < mask_prob
+    mask_full = F.interpolate(
+        patch_mask.float().view(1, 1, n_patches_h, n_patches_w),
+        size=(H, W),
+        mode='nearest'
+    ).view(H, W)
+
+    masked_image = image.clone()
+    masked_image[:, mask_full.bool()] = fill_val
+    return masked_image
+
+
+def _mask_random_patches_exact(image, mask_prob=0.5, patch_size=16, fill_val=0, seed=None):
+    """Alternative implementation using F.interpolate for patch masking."""
+    if seed is not None:
+        torch.manual_seed(seed)
+        random.seed(seed)
+
+    C, H, W = image.shape
+    assert H % patch_size == 0 and W % patch_size == 0, f"Image dimensions must be multiples of patch_size {patch_size}"
+
+    n_patches_h, n_patches_w = H // patch_size, W // patch_size
+    num_to_replace = max(0, int(n_patches_h * n_patches_w * mask_prob))
+    patch_mask = torch.zeros(n_patches_h * n_patches_w)
+
+    if num_to_replace > 0:
+        replace_indices = random.sample(range(n_patches_h * n_patches_w), num_to_replace)
+        patch_mask[replace_indices] = 1
+
+    mask_full = F.interpolate(
+        patch_mask.view(1, 1, n_patches_h, n_patches_w),
+        size=(H, W),
+        mode='nearest'
+    ).view(H, W)
+
+    masked_image = image.clone()
+    masked_image[:, mask_full.bool()] = fill_val
+    return masked_image
+
+
+class MRICleanDataset(Dataset):
+    def __init__(self, split='test', n_samples=None):
+        # Map split names to actual directory names
+        if split.lower() == 'train' or split == 'Training':
+            data_dir_name = 'Training'
+        elif split.lower() == 'test' or split == 'Testing':
+            data_dir_name = 'Testing'
+        else:
+            data_dir_name = split
+
+        self.data_dir = str(Path(__file__).parent / "vision" / "data" / data_dir_name)
+        self.transforms = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+        ])
+        self.dataset = datasets.ImageFolder(self.data_dir, transform=self.transforms)
+        self.n_samples = n_samples if n_samples is not None else len(self.dataset)
+
+    def __len__(self):
+        return self.n_samples
+
+    def __getitem__(self, idx):
+        return self.dataset[idx]
+
+
+class MRIPatchedProbDataset(Dataset):
+    def __init__(self, split='test', n_samples=None, p_ablate=0.5, patch_size=56, fill_val=0, seed=None):
+        self.dataset = MRICleanDataset(split, n_samples)
+        self.p_ablate = p_ablate
+        self.patch_size = patch_size
+        self.fill_val = fill_val
+        self.seed = seed
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        image, label = self.dataset[idx]
+        image_masked = _mask_random_patches_prob(
+            image,
+            self.p_ablate,
+            self.patch_size,
+            self.fill_val,
+            self.seed + idx if self.seed is not None else None
+        )
+        return image_masked, label
+
+
+class MRIPatchedExactDataset(Dataset):
+    def __init__(self, split='test', n_samples=None, p_ablate=0.5, patch_size=56, fill_val=0, seed=None):
+        self.dataset = MRICleanDataset(split, n_samples)
+        self.p_ablate = p_ablate
+        self.patch_size = patch_size
+        self.fill_val = fill_val
+        self.seed = seed
+    
+    def __len__(self):
+        return len(self.dataset)
+    
+    def __getitem__(self, idx):
+        image, label = self.dataset[idx]
+        image_masked = _mask_random_patches_exact(
+            image,
+            self.p_ablate,
+            self.patch_size,
+            self.fill_val,
+            self.seed + idx if self.seed is not None else None
+        )
+        return image_masked, label
+
 
 def load_mri_clean(split='test', n_samples=None):
     """
@@ -47,35 +165,11 @@ def load_mri_clean(split='test', n_samples=None):
     Args:
         split: 'train' or 'test'
         n_samples: Number of samples to load (None = all)
-
-    Returns:
-        images: (n_samples, 3, 224, 224) tensor
-        labels: (n_samples,) tensor
     """
-    # MRI data is in vision/data/Training and vision/data/Testing
-    if split == 'train':
-        data_dir = Path(__file__).parent / "vision" / "data" / "Training"
-    else:
-        data_dir = Path(__file__).parent / "vision" / "data" / "Testing"
-
-    # Create transforms - just resize and convert to tensor
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-    ])
-
-    # Load dataset using ImageFolder
-    dataset = datasets.ImageFolder(str(data_dir), transform=transform)
-
-    if n_samples:
-        # Use deterministic subset - take first n_samples
-        indices = list(range(min(n_samples, len(dataset))))
-        dataset = Subset(dataset, indices)
-
-    return _dataset_to_tensors(dataset)
+    return MRICleanDataset(split, n_samples)
 
 
-def load_mri_ablated_prob(split='test', p_ablate=0.5, n_samples=None):
+def load_mri_ablated_prob(split='test', p_ablate=0.5, n_samples=None, patch_size=56, fill_val=0, seed=None):
     """
     Load MRI with probabilistic patch ablation.
 
@@ -83,27 +177,44 @@ def load_mri_ablated_prob(split='test', p_ablate=0.5, n_samples=None):
         split: 'train' or 'test'
         p_ablate: Probability of ablating each patch (0.0 to 1.0)
         n_samples: Number of samples to load
+        patch_size: Size of patches to ablate
+        fill_val: Value to fill masked patches with
+        seed: Random seed for reproducibility
 
     Returns:
-        images: (n_samples, 3, 224, 224) tensor with ablation applied
-        labels: (n_samples,) tensor
+        dataset: PyTorch dataset with patch ablation applied
     """
-    images, labels = load_mri_clean(split, n_samples)
+    # Load the base dataset
+    base_dataset = load_mri_clean(split, n_samples)
+    
+    # Create a custom dataset class that applies patch masking
+    class PatchedDataset:
+        def __init__(self, base_dataset, mask_prob, patch_size, fill_val, seed):
+            self.base_dataset = base_dataset
+            self.mask_prob = mask_prob
+            self.patch_size = patch_size
+            self.fill_val = fill_val
+            self.seed = seed
+            
+        def __len__(self):
+            return len(self.base_dataset)
+            
+        def __getitem__(self, idx):
+            image, label = self.base_dataset[idx]
+            # Apply patch masking with the given seed offset by index for variety
+            masked_image = _mask_random_patches_prob(
+                image, 
+                mask_prob=self.mask_prob, 
+                patch_size=self.patch_size, 
+                fill_val=self.fill_val, 
+                seed=self.seed + idx if self.seed is not None else None
+            )
+            return masked_image, label
+    
+    return PatchedDataset(base_dataset, p_ablate, patch_size, fill_val, seed)
 
-    # Apply PatchCutout with probability p
-    augmenter = PatchCutout(
-        patch_height=56,
-        patch_width=56,
-        removal_fraction=p_ablate,
-        random_removal_fraction=False,
-        fill_val=0
-    )
 
-    ablated_images = torch.stack([augmenter(img) for img in images])
-    return ablated_images, labels
-
-
-def load_mri_ablated_exact(split='test', fraction_ablate=0.5, n_samples=None):
+def load_mri_ablated_exact(split='test', fraction_ablate=0.5, n_samples=None, patch_size=56, fill_val=0, seed=None):
     """
     Load MRI with exact fraction of patches ablated.
 
@@ -111,13 +222,41 @@ def load_mri_ablated_exact(split='test', fraction_ablate=0.5, n_samples=None):
         split: 'train' or 'test'
         fraction_ablate: Exact fraction of patches to ablate (0.0 to 1.0)
         n_samples: Number of samples to load
+        patch_size: Size of patches to ablate
+        fill_val: Value to fill masked patches with
+        seed: Random seed for reproducibility
 
     Returns:
-        images: (n_samples, 3, 224, 224) tensor with ablation applied
-        labels: (n_samples,) tensor
+        dataset: PyTorch dataset with exact patch ablation applied
     """
-    # Same as probabilistic since PatchCutout with random_removal_fraction=False gives exact fraction
-    return load_mri_ablated_prob(split, fraction_ablate, n_samples)
+    # Load the base dataset
+    base_dataset = load_mri_clean(split, n_samples)
+    
+    # Create a custom dataset class that applies exact patch masking
+    class ExactPatchedDataset:
+        def __init__(self, base_dataset, mask_prob, patch_size, fill_val, seed):
+            self.base_dataset = base_dataset
+            self.mask_prob = mask_prob
+            self.patch_size = patch_size
+            self.fill_val = fill_val
+            self.seed = seed
+            
+        def __len__(self):
+            return len(self.base_dataset)
+            
+        def __getitem__(self, idx):
+            image, label = self.base_dataset[idx]
+            # Apply exact patch masking with the given seed offset by index for variety
+            masked_image = _mask_random_patches_exact(
+                image, 
+                mask_prob=self.mask_prob, 
+                patch_size=self.patch_size, 
+                fill_val=self.fill_val, 
+                seed=self.seed + idx if self.seed is not None else None
+            )
+            return masked_image, label
+    
+    return ExactPatchedDataset(base_dataset, fraction_ablate, patch_size, fill_val, seed)
 
 
 def load_mri_fractionwise(split='test', n_fractions=16, n_samples=None):
@@ -522,6 +661,9 @@ def _dataset_to_tensors(dataset):
     labels = torch.cat(all_labels, dim=0)
 
     return images, labels
+
+
+
 
 
 def _mask_random_words_prob(text, mask_prob=0.15, replacement_token='UNKWORDZ', seed=None):
