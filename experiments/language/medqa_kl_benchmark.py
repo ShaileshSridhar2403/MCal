@@ -418,14 +418,14 @@ def build_kl_comparison_table(aggregated_results, include_methods=None):
     return table
 
 def load_medqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
-                   model_path="~/shailesh/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
+                   model_path="~/foo/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
                    use_real_data=True, balanced=True):
     """Load MedQA data following vision benchmark pattern."""
 
     print(f"Loading MedQA data with {n_samples} samples, {n_fractions} fractions...")
     print(f"Real data: {use_real_data}, Balanced: {balanced}")
 
-    if model_type in ["vanilla", "token_drop", "attention_mask"]:
+    if model_type in ["vanilla", "token_drop", "attention_mask", "qlora"]:
         # Load model
         expanded_path = Path(model_path).expanduser()
         model = load_medqa_llama_model(str(expanded_path))
@@ -461,6 +461,18 @@ def load_medqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
                 prompt_type='default',
                 batch_size=min(8, n_samples),
                 num_options=5
+            )
+
+        elif model_type == "qlora":
+            # Use qlora strategy
+            model = MCal_LLaMAModel("~/foo/MCal/saved_models/medqa/medqa_p0.5/merged_model")
+            predictions = generate_fractionwise_predictions(
+                model=model,
+                data=medqa_questions,
+                removal_fractions=removal_fractions,
+                prompt_type='default',
+                batch_size=min(8, n_samples),
+                num_options=5,
             )
         else:
             # Use standard word replacement strategy
@@ -503,7 +515,7 @@ def load_medqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
 
 def process_medqa_dataset(methods=None, device="cuda", save_dir="./results", n_runs=3,
                          n_samples=10, n_fractions=10,
-                         model_path="~/shailesh/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
+                         model_path="~/foo/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
                          use_real_data=True, balanced=True):
     """Process MedQA dataset and generate KL benchmarks - IDENTICAL STRUCTURE to vision."""
 
@@ -535,7 +547,8 @@ def process_medqa_dataset(methods=None, device="cuda", save_dir="./results", n_r
         # Check which data types we need
         need_token_drop = 'token_drop' in methods
         need_attention_mask = 'attention_mask' in methods
-        need_vanilla = any(method not in ['token_drop', 'attention_mask'] for method in methods)
+        need_qlora = 'qlora' in methods
+        need_vanilla = any(method not in ['token_drop', 'attention_mask', "qlora"] for method in methods)
 
         # Load data for different ablation strategies
         all_predictions = {}
@@ -579,6 +592,17 @@ def process_medqa_dataset(methods=None, device="cuda", save_dir="./results", n_r
             )
             all_predictions['attention_mask'] = predictions_attention_mask
             all_labels['attention_mask'] = labels_attention_mask
+
+        if need_qlora:
+            # Load qlora data
+            predictions_qlora, labels_qlora = load_medqa_data(
+                model_type="qlora",
+                n_samples=n_samples,
+                n_fractions=n_fractions,
+            )
+            all_predictions['qlora'] = predictions_qlora
+            all_labels['qlora'] = labels_qlora
+
         # Process each method
         for method in methods:
             print(f"\nProcessing method: {method}")
@@ -593,6 +617,11 @@ def process_medqa_dataset(methods=None, device="cuda", save_dir="./results", n_r
                 predictions = all_predictions['attention_mask']
                 labels = all_labels['attention_mask']
                 # For attention_mask, the baseline predictions are already the "transformed" ones
+                transformed_predictions = predictions
+            elif method == 'qlora':
+                predictions = all_predictions['qlora']
+                labels = all_labels['qlora']
+                # For qlora, the baseline predictions are already the "transformed" ones
                 transformed_predictions = predictions
             else:
                 predictions = all_predictions['vanilla']
@@ -679,7 +708,7 @@ def main():
     parser.add_argument("--device", type=str, default="cuda", help="Device (cuda/cpu)")
     parser.add_argument("--save_dir", type=str, default="./results", help="Save directory")
     parser.add_argument("--model_path", type=str,
-                       default="~/shailesh/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
+                       default="~/foo/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
                        help="Path to LLaMA model")
     parser.add_argument("--use_real_data", action="store_true", default=True,
                        help="Use real MedQA dataset (default: True)")

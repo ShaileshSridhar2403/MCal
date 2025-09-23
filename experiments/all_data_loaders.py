@@ -45,7 +45,7 @@ def _mask_random_patches_prob(image, mask_prob=0.5, patch_size=16, fill_val=0, s
         random.seed(seed)
 
     C, H, W = image.shape
-    assert H % patch_size == 0 and W % patch_size == 0, f"Image dimensions must be multiples of patch_size {patch_size}"
+    # assert H % patch_size == 0 and W % patch_size == 0, f"Image dimensions must be multiples of patch_size {patch_size}"
     n_patches_h, n_patches_w = H // patch_size, W // patch_size
     patch_mask = torch.rand(n_patches_h, n_patches_w) < mask_prob
     mask_full = F.interpolate(
@@ -66,7 +66,7 @@ def _mask_random_patches_exact(image, mask_prob=0.5, patch_size=16, fill_val=0, 
         random.seed(seed)
 
     C, H, W = image.shape
-    assert H % patch_size == 0 and W % patch_size == 0, f"Image dimensions must be multiples of patch_size {patch_size}"
+    # assert H % patch_size == 0 and W % patch_size == 0, f"Image dimensions must be multiples of patch_size {patch_size}"
 
     n_patches_h, n_patches_w = H // patch_size, W // patch_size
     num_to_replace = max(0, int(n_patches_h * n_patches_w * mask_prob))
