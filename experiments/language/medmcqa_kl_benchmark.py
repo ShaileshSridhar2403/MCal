@@ -170,7 +170,7 @@ def apply_mcal_calibrator(outputs, device, kappa=4.0, max_steps=10000, **kwargs)
 
     return transformed_outputs
 
-def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=10000, head_type="linear", experiment_id="medmcqa_experiment", **kwargs):
+def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=5000, head_type="linear", experiment_id="medmcqa_experiment", **kwargs):
     """Apply MCal_CE calibrator using cross-entropy loss."""
     # Convert numpy arrays to torch tensors if needed
     if not isinstance(outputs_tensor, torch.Tensor):
@@ -182,7 +182,7 @@ def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=10
     transformed_outputs = np.zeros_like(outputs_tensor.cpu().numpy())
 
     for fraction in tqdm(range(n_fractions), desc="Applying MCal_CE calibrator"):
-        calibrator = MCal_CE(num_classes=n_classes, head_type="mlp")
+        calibrator = MCal_CE(num_classes=n_classes, head_type="linear")
         calibrator.to(device)
         # pdb.set_trace()
         calibrator.fit(
@@ -211,15 +211,18 @@ def apply_platt_scaling(outputs_tensor, target_labels, device, **kwargs):
     transformed_outputs = np.zeros_like(outputs_tensor)
 
     for fraction in tqdm(range(n_fractions), desc="Applying Platt scaling"):
+        ablated_probs = torch.tensor(outputs_tensor[fraction], dtype=torch.float32, device=device)
         calibrator = PlattCalibrator(num_classes=4)
+        calibrator.to(device)
 
         # Convert to tensors
-        predictions = torch.from_numpy(outputs_tensor[fraction]).float()
-        labels = torch.from_numpy(target_labels).long()
+        predictions = torch.from_numpy(outputs_tensor[fraction]).float().to(device)
+        labels = torch.from_numpy(target_labels).long().to(device)
 
         # Fit and transform
-        transformed_predictions = calibrator.fit_transform(predictions, labels)
-        transformed_outputs[fraction] = transformed_predictions.numpy()
+        calibrator.fit(predictions, labels, verbose=False)
+        transformed_predictions = calibrator.forward(predictions)
+        transformed_outputs[fraction] = transformed_predictions.detach().cpu().numpy()
 
     return transformed_outputs
 
@@ -229,15 +232,19 @@ def apply_temperature_scaling(outputs_tensor, target_labels, device, **kwargs):
     transformed_outputs = np.zeros_like(outputs_tensor)
 
     for fraction in tqdm(range(n_fractions), desc="Applying temperature scaling"):
-        calibrator = TemperatureScaling()
+
+        ablated_probs = torch.tensor(outputs_tensor[fraction], dtype=torch.float32, device=device)
+        calibrator = TemperatureScaling(num_classes=4)
+        calibrator.to(device)
 
         # Convert to tensors
-        predictions = torch.from_numpy(outputs_tensor[fraction]).float()
-        labels = torch.from_numpy(target_labels).long()
+        predictions = torch.from_numpy(outputs_tensor[fraction]).float().to(device)
+        labels = torch.from_numpy(target_labels).long().to(device)
 
         # Fit and transform
-        transformed_predictions = calibrator.fit_transform(predictions, labels)
-        transformed_outputs[fraction] = transformed_predictions.numpy()
+        calibrator.fit(predictions, labels, verbose=False)
+        transformed_predictions = calibrator.forward(predictions)
+        transformed_outputs[fraction] = transformed_predictions.detach().cpu().numpy()
 
     return transformed_outputs
 
@@ -580,7 +587,6 @@ def process_medmcqa_dataset(methods=None, device="cuda", save_dir="./results", n
                 # Get method-specific kwargs
                 method_kwargs = {}
                 if method == 'mcal_ce':
-                    method_kwargs['max_steps'] = 10000
                     method_kwargs['experiment_id'] = f"medmcqa_experiment"
                     # method_kwargs['lr'] = 1e-2
                 

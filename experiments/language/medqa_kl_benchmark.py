@@ -211,7 +211,7 @@ def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=50
     transformed_outputs = np.zeros_like(outputs_tensor.cpu().numpy())
 
     for fraction in tqdm(range(n_fractions), desc="Applying MCal_CE calibrator"):
-        calibrator = MCal_CE(num_classes=n_classes, head_type="mlp")
+        calibrator = MCal_CE(num_classes=n_classes, head_type="linear")
         calibrator.to(device)
         # pdb.set_trace()
         calibrator.fit(
@@ -700,7 +700,7 @@ def main():
     """Main execution function."""
     parser = argparse.ArgumentParser(description="MedQA KL Divergence Benchmark")
     parser.add_argument("--methods", nargs='+',
-                       default=['baseline', 'mcal', 'platt', 'temperature'],
+                       default=['baseline', 'mcal_ce', 'platt', 'temperature', "qlora", "attention_mask", "token_drop"],
                        help="Methods to include in benchmark (baseline, mcal, mcal_ce, platt, temperature, token_drop, attention_mask)")
     parser.add_argument("--runs", type=int, default=3, help="Number of runs")
     parser.add_argument("--samples", type=int, default=10, help="Samples per run")
