@@ -116,6 +116,8 @@ def calculate_kl_metrics(outputs, device=None):
     
         print(f"Fraction {fraction}/{n_fractions} - KL Argmax: {kl_argmax:.6f}, KL Prob: {kl_prob:.6f}")
     # Calculate averages
+
+    
     avg_kl_argmax = np.mean(kl_values_argmax)
     avg_kl_prob = np.mean(kl_values_prob)
     
@@ -151,7 +153,10 @@ def apply_transform(outputs, labels,method, device=None, **kwargs):
     
     elif method == 'mcal_ce':
         return apply_mcal_ce_calibrator(outputs,labels, device, **kwargs)
-    
+
+    elif method == 'mcal_ce_uncond':
+        return apply_mcal_ce_uncond_calibrator(outputs, labels, device, **kwargs)
+
     elif method == 'platt':
         return apply_platt_calibrator(outputs, labels, device, **kwargs)
     
@@ -376,6 +381,14 @@ def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=50
     return transformed_outputs
 
 
+def apply_mcal_ce_uncond_calibrator(outputs_tensor, target_labels, device, max_steps=5000, head_type="linear", experiment_id="mri_experiment", **kwargs):
+    """Apply MCal_CE_Uncond calibrator (placeholder implementation)."""
+    # TODO: Implement unconditional MCal_CE calibrator
+    # For now, return the original outputs unchanged
+    print("WARNING: MCal_CE_Uncond is a placeholder - returning original outputs")
+    return outputs_tensor
+
+
 def apply_platt_calibrator(outputs, labels, device, max_steps=1000, **kwargs):
     """Apply Platt scaling calibrator fitted on fraction 0 (unablated inputs)."""
     n_fractions, n_samples, n_classes = outputs.shape
@@ -522,6 +535,7 @@ def build_kl_comparison_table(aggregated_results, include_methods=None):
         'arch_mod': "Arch Mod",
         'mcal': "MCal (Vector Scaling)",
         'mcal_ce': "MCal_CE (Cross-Entropy)",
+        'mcal_ce_uncond': "MCal_CE_Uncond (Unconditional)",
         'platt': "Platt Scaling",
         'temperature': "Temperature Scaling",
         'logits_sharp': "Logits Sharp Transform",
@@ -581,7 +595,7 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
     """
     # Default methods - include all calibrators and pre-computed methods
     if methods is None:
-        methods = ['baseline', 'replace_mean', 'patchcutout', 'arch_mod', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp']
+        methods = ['baseline', 'replace_mean', 'patchcutout', 'arch_mod', 'mcal', 'mcal_ce', 'mcal_ce_uncond', 'platt', 'temperature', 'logits_sharp']
     
     device = torch.device(device)
     
@@ -617,7 +631,7 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
     # Run multiple experiments
     for run in range(n_runs):
         print(f"\n--- Run {run + 1}/{n_runs} ---")
-        
+        torch.manual_seed(1000 + run)
         # Process each method
         for method in methods:
             print(f"\nProcessing method: {method}")
@@ -643,6 +657,7 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
                 # MCal_CE now handles labels internally, no need to request them
                 need_labels = False
                 predictions, labels = mds.load_mri_data()
+                # pdb.set_trace()
                 
                 # result = generate_fractionwise_predictions_from_images(
                 #     model, dataloader, n_samples, n_fractions, device, 
@@ -781,8 +796,8 @@ def main():
     """Main execution function."""
     parser = argparse.ArgumentParser(description="MRI KL Divergence Benchmark")
     parser.add_argument("--methods", nargs='+', 
-                       default=['baseline', 'replace_mean', 'patchcutout', 'arch_mod', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp'],
-                       help="Methods to include in benchmark. Available: baseline, replace_mean, patchcutout, arch_mod, mcal, mcal_ce, platt, temperature, logits_sharp, expectation_prob, expectation_onehot, optimized_lambda")
+                       default=['baseline', 'replace_mean', 'patchcutout', 'arch_mod', 'mcal_ce', 'platt', 'temperature'],
+                       help="Methods to include in benchmark. Available: baseline, replace_mean, patchcutout, arch_mod, mcal, mcal_ce, mcal_ce_uncond, platt, temperature, logits_sharp, expectation_prob, expectation_onehot, optimized_lambda")
     parser.add_argument("--runs", type=int, default=3, help="Number of runs")
     parser.add_argument("--samples", type=int, default=1000, help="Samples per fraction")
     parser.add_argument("--fractions", type=int, default=16, help="Number of fractions")

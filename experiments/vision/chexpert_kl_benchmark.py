@@ -728,7 +728,7 @@ def main():
     """Main execution function."""
     parser = argparse.ArgumentParser(description="CheXpert KL Divergence Benchmark")
     parser.add_argument("--methods", nargs='+', 
-                       default=['baseline', 'replace_mean', 'patchcutout', 'arch_mod', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp'],
+                       default=['baseline', 'replace_mean', 'patchcutout', 'arch_mod', 'mcal_ce', 'platt', 'temperature'],
                        help="Methods to include in benchmark. Available: baseline, replace_mean, patchcutout, arch_mod, mcal, mcal_ce, platt, temperature, logits_sharp, expectation_prob, expectation_onehot, optimized_lambda")
     parser.add_argument("--runs", type=int, default=3, help="Number of runs")
     parser.add_argument("--samples", type=int, default=1000, help="Samples per fraction")
@@ -764,6 +764,7 @@ def main():
         patchcutout_data_dir=args.patchcutout_data_dir,
         use_default_data=not args.no_default_data
     )
+    
     
     print("\nBenchmark completed! YAY!")
 
