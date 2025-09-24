@@ -6,6 +6,7 @@ import torch.nn as nn
 from tqdm.notebook import tqdm
 import timm
 import pdb
+import numpy as np
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -137,12 +138,16 @@ def load_mri_data(model_type = "vanilla",fill_value=0):
             batch_probs = []  # Shape: (k, batch_size, num_classes)
             
             # Generate predictions for each ablation fraction with progress bar
+            # pdb.set_trace()
             for fraction in tqdm(ablation_fractions, desc=f"Batch {batch_idx+1} - Ablation levels", leave=False):
                 # Create ablated data for this fraction (keep on GPU)
+
                 ablated_data = []
                 for img in data:
                     ablated_img = apply_patch_cutout_with_fraction(img, fraction)  # Keep on GPU
                     ablated_data.append(ablated_img)
+
+                    
                 ablated_data = torch.stack(ablated_data)
                 
                 # Get predictions for this ablation level
@@ -163,13 +168,175 @@ def load_mri_data(model_type = "vanilla",fill_value=0):
     # Concatenate all predictions: (k, n, c)
     all_probs = torch.cat(all_probs, dim=1)  # Concatenate along sample dimension
     true_labels = torch.cat(true_labels, dim=0)
+    # pdb.set_trace()
+    print(f"✅ Generated predictions for {all_probs.shape[1]} samples with {len(ablation_fractions)} ablation levels")
+    print(f"   All probabilities shape: {all_probs.shape} (k={len(ablation_fractions)}, n={all_probs.shape[1]}, c={all_probs.shape[2]})")
+    print(f"   True labels shape: {true_labels.shape}")
+    print(f"   Ablation fractions: {ablation_fractions}")
+    pdb.set_trace()
+    return all_probs, true_labels
 
+
+
+def load_mri_data_binomial(model_type = "vanilla",fill_value=0):
+    # Get dataset configuration
+    mri_config = get_dataset_config('mri')
+    num_classes = mri_config['num_classes']
+    image_size = mri_config['image_size']
+
+    # Load trained MRI model (vanilla model)
+    print("📦 Loading trained MRI model...")
+    if model_type == "vanilla":
+        model_path = get_model_path('mri', 'vanilla')
+    elif model_type == "patchcutout":
+        model_path = get_model_path('mri', 'PatchCutout')
+
+    print(f"Model path: {model_path}")
+
+    # Create Vision Transformer model
+    model = timm.create_model(
+        'vit_base_patch16_224', 
+        pretrained=False, 
+        num_classes=num_classes
+    )
+    
+
+
+
+    # Load weights
+    print("Loading model weights...")
+    state_dict = torch.load(model_path, map_location=device, weights_only=True)
+    model.load_state_dict(state_dict, strict=False)
+
+    # Move model to device and set to eval mode
+    model = model.to(device).eval()
+    print("✅ Model loaded successfully!")
+
+
+    def apply_patch_cutout_with_fraction(img_tensor, removal_fraction):
+        """Apply PatchCutout augmentation with specific removal fraction."""
+        patch_cutout = PatchCutout(
+            patch_height=56,
+            patch_width=56,
+            removal_fraction=removal_fraction,
+            random_removal_fraction=False,  # Use exact fraction, not random
+            random_dist="binomial",
+            fill_val=fill_value
+        )
+        # pdb.set_trace()
+        # t
+        return patch_cutout(img_tensor)
+
+
+    # Generate predictions across all ablation fractions
+    print("🔮 Generating predictions across all ablation fractions (0/16 to 15/16)...")
+
+    # Initialize MRI data loader
+    print("🧠 Loading MRI test dataset...")
+    data_dir = project_root / "data"
+    mri_loader = MRILoader(data_dir=data_dir)
+
+    # Load clean test dataset (no augmentation)
+    train_dataset, test_dataset_clean, _ = mri_loader.setup_dataset()
+
+    print(f"✅ Dataset loaded successfully!")
+    print(f"   Test samples: {len(test_dataset_clean)}")
+    print(f"   Train samples: {len(train_dataset)}")
+    print(f"   Classes: {mri_loader.class_names}")
+    print(f"   Number of classes: {num_classes}")
+    print(f"   Image size: {image_size}")
+
+    # Balance the dataset using the base loader method
+    from torch.utils.data import Subset
+    import numpy as np
+
+    # Get all indices and labels from the dataset
+    all_indices = list(range(len(train_dataset)))
+    all_labels = [train_dataset[i][1] for i in all_indices]
+
+    # Balance the dataset - set desired samples per class
+    n_samples_per_class = 300  # Adjust this as needed
+    balanced_indices, _ = mri_loader.balance_dataset(
+        paths=[str(i) for i in all_indices],  # Convert indices to strings
+        labels=[str(label) for label in all_labels],  # Convert to strings
+        min_count=n_samples_per_class,
+        randomize=True
+    )
+
+    # Convert back to integers and create subset
+    balanced_indices = [int(idx) for idx in balanced_indices]
+    limited_dataset = Subset(train_dataset, balanced_indices)
+    
+    print(f"✅ Balanced dataset created!")
+    print(f"   Total balanced samples: {len(balanced_indices)}")
+    print(f"   Samples per class: {n_samples_per_class}")
+
+    # Create data loader for clean data
+    batch_size = 32
+    # test_loader = mri_loader.get_dataloader(test_dataset_clean, batch_size=batch_size, shuffle=False)
+    train_loader = mri_loader.get_dataloader(limited_dataset, batch_size=batch_size, shuffle=True)
+
+    # Define ablation fractions (0/16 to 15/16)
+    ablation_fractions = [i/16 for i in range(16)]  # [0.0, 1/16, 2/16, ..., 15/16]
+    
+    all_probs = []  # Will have shape (k, n, c) where k=16, n=num_samples, c=num_classes
+    true_labels = []
+
+    # Process test set
+    with torch.no_grad():
+        # for batch_idx, (data, target) in enumerate(tqdm(test_loader, desc="Processing batches")):
+        for batch_idx, (data, target) in enumerate(tqdm(train_loader, desc="Processing batches")):
+            data = data.to(device)
+            target = target.to(device)
+            
+            batch_probs = []  # Shape: (k, batch_size, num_classes)
+            
+            # Generate predictions for each ablation fraction with progress bar
+            # pdb.set_trace()
+            for fraction in tqdm(ablation_fractions, desc=f"Batch {batch_idx+1} - Ablation levels", leave=False):
+                # Create ablated data for this fraction (keep on GPU)
+
+                fraction = np.random.binomial(16, 0.5)
+
+
+                ablated_data = []
+                for img in data:
+                    ablated_img = apply_patch_cutout_with_fraction(img, fraction)  # Keep on GPU
+                    ablated_data.append(ablated_img)
+
+                    
+                ablated_data = torch.stack(ablated_data)
+                
+                # Get predictions for this ablation level
+                output = model(ablated_data)
+                prob = torch.softmax(output, dim=1)
+                batch_probs.append(prob)
+            
+            # Stack probabilities: (k, batch_size, num_classes)
+            batch_probs = torch.stack(batch_probs, dim=0)
+            all_probs.append(batch_probs)
+            true_labels.append(target)
+            
+            # Debug first batch
+            if batch_idx == 0:
+                print(f"Data shape: {data.shape}")
+                print(f"Batch probabilities shape: {batch_probs.shape}")
+
+    # Concatenate all predictions: (k, n, c)
+    all_probs = torch.cat(all_probs, dim=1)  # Concatenate along sample dimension
+    all_probs = all_probs.reshape(-1, num_classes)
+    true_labels = torch.cat(true_labels, dim=0)
+    true_labels = all_probs.repeat(len(ablation_fractions))
+
+    
+    # pdb.set_trace()
     print(f"✅ Generated predictions for {all_probs.shape[1]} samples with {len(ablation_fractions)} ablation levels")
     print(f"   All probabilities shape: {all_probs.shape} (k={len(ablation_fractions)}, n={all_probs.shape[1]}, c={all_probs.shape[2]})")
     print(f"   True labels shape: {true_labels.shape}")
     print(f"   Ablation fractions: {ablation_fractions}")
     # pdb.set_trace()
     return all_probs, true_labels
+
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
@@ -267,3 +434,7 @@ if __name__ == "__main__":
     print(f"\n✅ Saved ablated images to {output_dir}/")
     print(f"   Combined figure: {combined_path}")
     print(f"   Individual images: {len(ablation_fractions)} files")
+
+
+
+    
