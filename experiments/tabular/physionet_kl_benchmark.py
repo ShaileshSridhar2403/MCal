@@ -53,17 +53,68 @@ except ImportError:
     print("Warning: tabular_utils not found - using fallback functions")
 
     # Fallback functions
-    def aggregate_results(results):
-        return results
+    def aggregate_results(all_results):
+        """Aggregate results across multiple runs with fractionwise KL calculation."""
+        aggregated_results = {}
+
+        for method in all_results.keys():
+            results = all_results[method]
+
+            # Extract overall metrics
+            kl_prob_values = [r.get('average_kl_prob', 0) for r in results if r]
+            kl_argmax_values = [r.get('average_kl_argmax', 0) for r in results if r]
+
+            # Aggregate fraction-wise results
+            fraction_wise_results = aggregate_fractionwise_kl(results)
+
+            aggregated_results[method] = {
+                'kl_transformed_mean_prob': np.mean(kl_prob_values) if kl_prob_values else 0.0,
+                'kl_transformed_std_prob': np.std(kl_prob_values) if len(kl_prob_values) > 1 else 0.0,
+                'kl_transformed_mean_onehot': np.mean(kl_argmax_values) if kl_argmax_values else 0.0,
+                'kl_transformed_std_onehot': np.std(kl_argmax_values) if len(kl_argmax_values) > 1 else 0.0,
+                'fraction_wise_results_transformed': fraction_wise_results
+            }
+
+            # For baseline, also store as baseline results
+            if method == 'baseline':
+                aggregated_results[method].update({
+                    'kl_baseline_mean_prob': np.mean(kl_prob_values) if kl_prob_values else 0.0,
+                    'kl_baseline_std_prob': np.std(kl_prob_values) if len(kl_prob_values) > 1 else 0.0,
+                    'kl_baseline_mean_onehot': np.mean(kl_argmax_values) if kl_argmax_values else 0.0,
+                    'kl_baseline_std_onehot': np.std(kl_argmax_values) if len(kl_argmax_values) > 1 else 0.0,
+                    'fraction_wise_results': fraction_wise_results
+                })
+
+        return aggregated_results
 
     def build_kl_comparison_table(results):
         return str(results)
 
-    def save_results(results, save_dir, dataset_name):
-        json_path = f"{save_dir}/results.json"
+    def save_results(results, save_dir, dataset_name, n_runs=1):
+        # Create save directory if it doesn't exist
+        os.makedirs(save_dir, exist_ok=True)
+
+        # Save with the correct filename for PhysioNet
+        json_path = f"{save_dir}/physionet_results.json"
         with open(json_path, 'w') as f:
             import json
-            json.dump(results, f, indent=2)
+            # Convert numpy types to regular Python types for JSON serialization
+            def convert_numpy(obj):
+                if isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                elif isinstance(obj, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64,
+                                     np.uint8, np.uint16, np.uint32, np.uint64)):
+                    return int(obj)
+                elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
+                    return float(obj)
+                elif isinstance(obj, dict):
+                    return {k: convert_numpy(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_numpy(v) for v in obj]
+                return obj
+
+            serializable_results = convert_numpy(results)
+            json.dump(serializable_results, f, indent=2)
         return json_path, None, None
 
     def convert_to_json_serializable(obj):
@@ -71,6 +122,45 @@ except ImportError:
 
     def plot_kl_divergence(results, save_path):
         pass
+
+def aggregate_fractionwise_kl(fractionwise_results):
+    """Aggregate fractionwise KL divergence results across multiple runs."""
+    if not fractionwise_results or not fractionwise_results[0]:
+        return {"mean_argmax": [], "std_argmax": [], "mean_prob": [], "std_prob": []}
+
+    # Determine number of fractions from the first result
+    first_result = fractionwise_results[0]
+    if isinstance(first_result, dict) and 'kl_values_argmax' in first_result:
+        num_fractions = len(first_result['kl_values_argmax'])
+    else:
+        return {"mean_argmax": [], "std_argmax": [], "mean_prob": [], "std_prob": []}
+
+    # Initialize arrays to store values for each fraction across runs
+    kl_argmax_values = [[] for _ in range(num_fractions)]
+    kl_prob_values = [[] for _ in range(num_fractions)]
+
+    # Collect values across all runs
+    for run_results in fractionwise_results:
+        kl_argmax_list = run_results['kl_values_argmax']
+        kl_prob_list = run_results['kl_values_prob']
+
+        for i in range(min(len(kl_argmax_list), num_fractions)):
+            kl_argmax_values[i].append(kl_argmax_list[i])
+            kl_prob_values[i].append(kl_prob_list[i])
+
+    # Calculate mean and standard deviation for each fraction
+    mean_argmax = [np.mean(values) if values else 0.0 for values in kl_argmax_values]
+    std_argmax = [np.std(values) if len(values) > 1 else 0.0 for values in kl_argmax_values]
+    mean_prob = [np.mean(values) if values else 0.0 for values in kl_prob_values]
+    std_prob = [np.std(values) if len(values) > 1 else 0.0 for values in kl_prob_values]
+
+    return {
+        "mean_argmax": mean_argmax,
+        "std_argmax": std_argmax,
+        "mean_prob": mean_prob,
+        "std_prob": std_prob
+    }
+
 
 # MCal optimization utilities
 from utils.optimization import kl_divergence, get_expectation
@@ -101,6 +191,11 @@ def calculate_kl_metrics(outputs, labels=None, device=None):
     expectations_prob = []
     expectations_argmax = []
     accuracies = []
+    kl_values_argmax = []
+    kl_values_prob = []
+
+    # Create uniform distribution for KL calculation
+    uniform_dist = torch.full((n_outputs,), 1.0 / n_outputs, device=device)
 
     for fraction in range(n_fractions):
         probs = outputs[fraction]
@@ -117,6 +212,13 @@ def calculate_kl_metrics(outputs, labels=None, device=None):
         exp_argmax, _ = get_expectation(one_hot)
         expectations_argmax.append(exp_argmax)
 
+        # Calculate fraction-wise KL divergences
+        kl_argmax = kl_divergence(exp_argmax, uniform_dist).item()
+        kl_prob = kl_divergence(exp_prob, uniform_dist).item()
+
+        kl_values_argmax.append(kl_argmax)
+        kl_values_prob.append(kl_prob)
+
         # Calculate accuracy if labels provided
         if labels is not None:
             if not isinstance(labels, torch.Tensor):
@@ -132,13 +234,15 @@ def calculate_kl_metrics(outputs, labels=None, device=None):
     expectations_prob = torch.stack(expectations_prob)  # (n_fractions, n_classes)
     expectations_argmax = torch.stack(expectations_argmax)  # (n_fractions, n_classes)
 
-    # Calculate KL divergences (mean over fractions)
-    kl_prob = kl_divergence(expectations_prob[0], expectations_prob.mean(dim=0))
-    kl_argmax = kl_divergence(expectations_argmax[0], expectations_argmax.mean(dim=0))
+    # Calculate average KL divergences
+    avg_kl_prob = np.mean(kl_values_prob)
+    avg_kl_argmax = np.mean(kl_values_argmax)
 
     results = {
-        'average_kl_prob': kl_prob.item(),
-        'average_kl_argmax': kl_argmax.item(),
+        'average_kl_prob': avg_kl_prob,
+        'average_kl_argmax': avg_kl_argmax,
+        'kl_values_argmax': kl_values_argmax,
+        'kl_values_prob': kl_values_prob
     }
 
     if labels is not None and accuracies:
@@ -162,6 +266,9 @@ def apply_transform(outputs, labels, method, device=None, **kwargs):
 
     elif method == 'mcal_ce':
         return apply_mcal_ce_calibrator(outputs, labels, device, **kwargs)
+
+    elif method == 'mcal_ce_uncond':
+        return apply_mcal_ce_uncond_calibrator(outputs, labels, device, **kwargs)
 
     elif method == 'platt':
         return apply_platt_calibrator(outputs, labels, device, **kwargs)
@@ -266,6 +373,55 @@ def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=50
     return transformed_outputs
 
 
+def apply_mcal_ce_uncond_calibrator(outputs_tensor, target_labels, device, max_steps=5000,
+                                   head_type="linear", experiment_id="physionet_experiment", **kwargs):
+    """Apply MCal_CE_Uncond calibrator using unconditional training approach."""
+    # Convert numpy arrays to torch tensors if needed
+    if not isinstance(outputs_tensor, torch.Tensor):
+        outputs_tensor = torch.tensor(outputs_tensor, dtype=torch.float32, device=device)
+    if not isinstance(target_labels, torch.Tensor):
+        target_labels = torch.tensor(target_labels, dtype=torch.long, device=device)
+
+    n_fractions, n_samples, n_classes = outputs_tensor.shape
+    transformed_outputs = np.zeros_like(outputs_tensor.cpu().numpy())
+
+    # Create training tensor by randomly sampling from all fractions
+    train_tensor = torch.zeros_like(outputs_tensor[0])
+
+    for i in range(n_samples):
+        fraction_ind = np.random.binomial(n_fractions-1, 0.5)  # Random fraction selection
+        train_tensor[i, :] = outputs_tensor[fraction_ind][i]
+
+    # Use clean predictions (fraction 0) as target labels for training
+    training_labels = outputs_tensor[0].argmax(dim=-1)
+
+    # Create and fit single MCal_CE calibrator
+    calibrator = MCal_CE(num_classes=n_classes, head_type=head_type)
+    calibrator.to(device)
+    calibrator.fit(
+        ablated_probs=train_tensor,
+        target_labels=training_labels,
+        max_steps=max_steps,
+        lr=1e-3,
+        verbose=True,
+        fraction=0,  # Use 0 as placeholder for unconditional training
+        experiment_id=experiment_id
+    )
+
+    # Apply the single calibrator to all fractions
+    for fraction in tqdm(range(n_fractions), desc="Applying MCal_CE_Uncond calibrator"):
+        calibrated_probs = calibrator.forward(outputs_tensor[fraction])
+        transformed_outputs[fraction] = calibrated_probs.detach().cpu().numpy()
+
+    # Combine results
+    print(f"\n=== Combining MCal_CE_Uncond results for experiment: {experiment_id} ===")
+    combined_file = MCal_CE.combine_fraction_results(experiment_id, cleanup_temp_files=True)
+    if combined_file:
+        print(f"All MCal_CE_Uncond results combined and saved to: {combined_file}")
+
+    return transformed_outputs
+
+
 def apply_platt_calibrator(outputs, labels, device, max_steps=1000, **kwargs):
     """Apply Platt scaling calibrator."""
     n_fractions, n_samples, n_classes = outputs.shape
@@ -354,7 +510,7 @@ def process_physionet_dataset(methods=None, device="cuda", save_dir="./results",
     """Process PhysioNet dataset and generate KL benchmarks."""
 
     if methods is None:
-        methods = ['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp', 'retrain', 'replace', 'archmod']
+        methods = ['baseline', 'mcal', 'mcal_ce', 'mcal_ce_uncond', 'platt', 'temperature', 'logits_sharp', 'retrain', 'replace', 'archmod']
 
     device = torch.device(device)
 
@@ -383,7 +539,7 @@ def process_physionet_dataset(methods=None, device="cuda", save_dir="./results",
         method_predictions = {}
 
         # Standard methods use vanilla model with mean imputation
-        if any(method in ['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp'] for method in methods):
+        if any(method in ['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp','mcal_ce_uncond'] for method in methods):
             predictions, labels = load_physionet_data(
                 model_type="vanilla",  # Clean, simple vanilla model
                 fill_value="mean",     # Mean imputation for missing values
@@ -393,7 +549,7 @@ def process_physionet_dataset(methods=None, device="cuda", save_dir="./results",
             print(f"Loaded vanilla data - Predictions: {predictions.shape}, Labels: {labels.shape}")
 
             # Store for all standard methods
-            for method in ['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp']:
+            for method in ['baseline', 'mcal', 'mcal_ce','mcal_ce_uncond' ,'platt', 'temperature', 'logits_sharp']:
                 if method in methods:
                     method_predictions[method] = predictions
 
@@ -452,11 +608,11 @@ def process_physionet_dataset(methods=None, device="cuda", save_dir="./results",
             else:
                 # Configure method-specific parameters
                 method_kwargs = {}
-                if method in ['mcal', 'mcal_ce', 'platt', 'temperature']:
+                if method in ['mcal', 'mcal_ce','mcal_ce_uncond' 'platt', 'temperature']:
                     method_kwargs['max_steps'] = 1000
                 if method == 'mcal':
                     method_kwargs['kappa'] = 10.0
-                elif method == 'mcal_ce':
+                elif method in ['mcal_ce','mcal_ce_uncond']:
                     method_kwargs['max_steps'] = 5000
                     method_kwargs['head_type'] = 'linear'
                     method_kwargs['experiment_id'] = f'physionet_run_{run}'
@@ -484,6 +640,13 @@ def process_physionet_dataset(methods=None, device="cuda", save_dir="./results",
     aggregated_results = aggregate_results(all_results)
     json_path, table_path, plot_path = save_results(aggregated_results, save_dir, "physionet", n_runs)
 
+    # Also save to the expected location for plotting notebook
+    import shutil
+    expected_path = f"{save_dir}/physionet_results.json"
+    if json_path != expected_path:
+        shutil.copy2(json_path, expected_path)
+        print(f"Results also saved to: {expected_path}")
+
     # Print summary table
     print("\nFinal Results Summary:")
     table = build_kl_comparison_table(aggregated_results)
@@ -504,8 +667,8 @@ def main():
     """Main function with argument parsing."""
     parser = argparse.ArgumentParser(description="PhysioNet Tabular KL Divergence Benchmark")
     parser.add_argument("--methods", nargs="+",
-                       choices=['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp', 'retrain', 'replace', 'archmod'],
-                       default=['baseline', 'mcal_ce', 'retrain'],
+                       choices=['baseline', 'mcal', 'mcal_ce', 'mcal_ce_uncond', 'platt', 'temperature', 'logits_sharp', 'retrain', 'replace', 'archmod'],
+                       default=['baseline', 'mcal_ce', 'mcal_ce_uncond', 'retrain'],
                        help="Methods to benchmark")
     parser.add_argument("--device", default="cuda", help="Device to use")
     parser.add_argument("--save_dir", default="./results", help="Directory to save results")

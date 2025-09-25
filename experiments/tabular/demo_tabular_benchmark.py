@@ -18,7 +18,7 @@ current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir))
 
 from xgboost_utils import MCALXGBoostPredictor
-from tabular_kl_benchmark import calculate_kl_metrics, apply_transform
+from physionet_kl_benchmark import calculate_kl_metrics, apply_transform
 # Import from our local tabular_utils (not XAI_Benchmark's)
 sys.path.insert(0, str(current_dir))  # Ensure local imports take precedence
 from tabular_utils import (
@@ -255,7 +255,7 @@ def main():
 
     print("\n🎉 Tabular benchmark demo completed successfully!")
     print("\nTo run with real PhysioNet data:")
-    print("  python tabular_kl_benchmark.py --samples 100 --runs 1")
+    print("  python physionet_kl_benchmark.py --samples 100 --runs 1")
 
     return True
 

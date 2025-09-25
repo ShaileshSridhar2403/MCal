@@ -33,8 +33,8 @@ def test_imports():
         print("✓ xgboost_utils imports successful")
 
         # Test main benchmark
-        from tabular_kl_benchmark import calculate_kl_metrics, apply_transform
-        print("✓ tabular_kl_benchmark imports successful")
+        from physionet_kl_benchmark import calculate_kl_metrics, apply_transform
+        print("✓ physionet_kl_benchmark imports successful")
 
         return True
 
@@ -77,7 +77,7 @@ def test_kl_calculation():
     print("\nTesting KL divergence calculation...")
 
     try:
-        from tabular_kl_benchmark import calculate_kl_metrics
+        from physionet_kl_benchmark import calculate_kl_metrics
 
         # Create synthetic prediction data
         n_fractions, n_samples, n_classes = 5, 100, 2
@@ -163,7 +163,7 @@ def test_calibration_methods():
     print("\nTesting calibration methods...")
 
     try:
-        from tabular_kl_benchmark import apply_transform
+        from physionet_kl_benchmark import apply_transform
 
         # Create synthetic prediction data
         n_fractions, n_samples, n_classes = 3, 50, 2
@@ -209,7 +209,7 @@ def run_minimal_benchmark():
     print("\nRunning minimal benchmark test...")
 
     try:
-        from tabular_kl_benchmark import process_physionet_dataset
+        from physionet_kl_benchmark import process_physionet_dataset
 
         # This will likely fail due to missing PhysioNet data, but we can test the structure
         print("Note: This test may fail due to missing PhysioNet data files.")
