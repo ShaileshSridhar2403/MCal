@@ -216,6 +216,7 @@ def build_kl_comparison_table(aggregated_results, include_methods=None, dataset_
         'baseline': "Original",
         'mcal': "MCal (Vector Scaling)",
         'mcal_ce': "MCal_CE (Cross-Entropy)",
+        'mcal_ce_uncond': "MCal_CE_Uncond (Unconditional)",
         'platt': "Platt Scaling",
         'temperature': "Temperature Scaling",
         'logits_sharp': "LogitsSharp Transform",

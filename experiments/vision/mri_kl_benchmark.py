@@ -383,10 +383,43 @@ def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=50
 
 def apply_mcal_ce_uncond_calibrator(outputs_tensor, target_labels, device, max_steps=5000, head_type="linear", experiment_id="mri_experiment", **kwargs):
     """Apply MCal_CE_Uncond calibrator (placeholder implementation)."""
-    # TODO: Implement unconditional MCal_CE calibrator
-    # For now, return the original outputs unchanged
-    print("WARNING: MCal_CE_Uncond is a placeholder - returning original outputs")
-    return outputs_tensor
+
+    n_fractions, n_samples, n_classes = outputs_tensor.shape
+    transformed_outputs = np.zeros_like(outputs_tensor.detach().cpu().numpy())
+    train_tensor = torch.zeros_like(outputs_tensor[0])
+
+    for i in range(n_samples):
+        fraction_ind = np.random.binomial(n_fractions,0.5)
+        train_tensor[i,:] = outputs_tensor[fraction_ind][i]
+
+    # Create and fit MCal_CE calibrator
+    calibrator = MCal_CE(num_classes=n_classes, head_type=head_type)
+    calibrator.to(device)
+    calibrator.fit(
+        ablated_probs=train_tensor,  # Pass current fraction (2D)
+        target_labels=target_labels,  # Use target labels from 0th index
+        max_steps=max_steps,
+        lr=1e-3,
+        verbose=True,  # Enable verbose output to match MCal behavior
+        fraction=0,  # Pass current fraction number
+        experiment_id=experiment_id  # Pass experiment identifier
+    )
+
+    for fraction in tqdm(range(n_fractions), desc="Applying MCal_CE calibrator"):
+        
+        # Apply calibration using forward method
+        calibrated_probs = calibrator.forward(outputs_tensor[fraction])
+        transformed_outputs[fraction] = calibrated_probs.detach().cpu().numpy()
+    
+    # Combine all fraction results into a single JSON file
+    print(f"\n=== Combining MCal_CE results for experiment: {experiment_id} ===")
+    combined_file = MCal_CE.combine_fraction_results(experiment_id, cleanup_temp_files=True)
+    if combined_file:
+        print(f"All MCal_CE results combined and saved to: {combined_file}")
+    else:
+        print("No temporary files found to combine!")
+    
+    return transformed_outputs
 
 
 def apply_platt_calibrator(outputs, labels, device, max_steps=1000, **kwargs):
@@ -647,6 +680,7 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
             elif method == 'arch_mod':
 
                 predictions,labels = get_patch_drop_outputs("mri", device=device, batch_size=32)
+            
                
             else:
                 # Generate baseline predictions from real images for other methods
@@ -704,6 +738,7 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
     aggregated_results = aggregate_results(all_results)
     
     # Save results as JSON
+    pdb.set_trace()
     json_path = os.path.join(save_dir, "json", "aggregated_results_mri.json")
     
     # Convert to JSON serializable format
@@ -796,7 +831,7 @@ def main():
     """Main execution function."""
     parser = argparse.ArgumentParser(description="MRI KL Divergence Benchmark")
     parser.add_argument("--methods", nargs='+', 
-                       default=['baseline', 'replace_mean', 'patchcutout', 'arch_mod', 'mcal_ce', 'platt', 'temperature'],
+                       default=['baseline', 'replace_mean', 'patchcutout', 'arch_mod', 'mcal', 'mcal_ce', 'mcal_ce_uncond', 'platt', 'temperature', 'logits_sharp'],
                        help="Methods to include in benchmark. Available: baseline, replace_mean, patchcutout, arch_mod, mcal, mcal_ce, mcal_ce_uncond, platt, temperature, logits_sharp, expectation_prob, expectation_onehot, optimized_lambda")
     parser.add_argument("--runs", type=int, default=3, help="Number of runs")
     parser.add_argument("--samples", type=int, default=1000, help="Samples per fraction")

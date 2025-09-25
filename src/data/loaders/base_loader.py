@@ -48,7 +48,7 @@ class BaseDataLoader(ABC):
         self.dataset_info = {}
         
         # Set random seed
-        torch.manual_seed(seed)
+        # torch.manual_seed(seed)
         
     @abstractmethod
     def download_dataset(self, **kwargs) -> None:

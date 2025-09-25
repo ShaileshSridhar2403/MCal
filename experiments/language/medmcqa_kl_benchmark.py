@@ -218,8 +218,9 @@ def apply_platt_scaling(outputs_tensor, target_labels, device, **kwargs):
         labels = torch.from_numpy(target_labels).long()
 
         # Fit and transform
-        transformed_predictions = calibrator.fit_transform(predictions, labels)
-        transformed_outputs[fraction] = transformed_predictions.numpy()
+        calibrator.fit(predictions, labels, verbose=False)
+        transformed_predictions = calibrator.forward(predictions)
+        transformed_outputs[fraction] = transformed_predictions.detach().numpy()
 
     return transformed_outputs
 
@@ -229,15 +230,16 @@ def apply_temperature_scaling(outputs_tensor, target_labels, device, **kwargs):
     transformed_outputs = np.zeros_like(outputs_tensor)
 
     for fraction in tqdm(range(n_fractions), desc="Applying temperature scaling"):
-        calibrator = TemperatureScaling()
+        calibrator = TemperatureScaling(num_classes=n_classes)
 
         # Convert to tensors
         predictions = torch.from_numpy(outputs_tensor[fraction]).float()
         labels = torch.from_numpy(target_labels).long()
 
         # Fit and transform
-        transformed_predictions = calibrator.fit_transform(predictions, labels)
-        transformed_outputs[fraction] = transformed_predictions.numpy()
+        calibrator.fit(predictions, labels, verbose=False)
+        transformed_predictions = calibrator.forward(predictions)
+        transformed_outputs[fraction] = transformed_predictions.detach().numpy()
 
     return transformed_outputs
 
