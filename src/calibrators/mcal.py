@@ -191,17 +191,6 @@ class MCal(BaseCalibrator):
             stats["acc"].append(acc.item())
             stats["grad_norm"].append(grad_norm.item())
 
-            # Early stopping based on gradient norm (commented out as requested)
-            # if step < warmup_steps:
-            #     grad_norm_avg += grad_norm / warmup_steps
-            #     grad_norm_ref = grad_norm_avg
-            # else:
-            #     grad_norm_avg = ema_decay * grad_norm_avg + (1 - ema_decay) * grad_norm
-            #     
-            #     if early_stopping and grad_norm_avg < max(0.01 * grad_norm_ref, 1e-6):
-            #         if verbose:
-            #             print(f"Early stopping at step {step}")
-            #         break
 
             if verbose:
                 pbar.set_description(f"Loss: {loss.item():.3e}, Acc: {acc:.3f}, GradNorm: {grad_norm:.3e}")

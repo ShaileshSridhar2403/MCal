@@ -320,7 +320,7 @@ def map_probs_to_list(prob_dict, num_options=4):
 def load_local_medmcqa_data(n_samples=10, balanced=True):
     """Load MedMCQA dataset from local files following XAI-Benchmark pattern."""
     # Try to load from local balanced file first
-    balanced_file_path = "/home/antonxue/shailesh/MCal/data/language/dev_balanced.json"
+    balanced_file_path = "/home/ayx98/foo/MCal/data/language/medmcqa_dev_balanced.json"
 
     if not os.path.exists(balanced_file_path):
         raise FileNotFoundError(

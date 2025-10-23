@@ -68,7 +68,7 @@ def main():
                        help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=4,
                        help="Training batch size")
-    parser.add_argument("--learning_rate", type=float, default=2e-4,
+    parser.add_argument("--learning_rate", type=float, default=1e-4,
                        help="Learning rate")
     parser.add_argument("--max_length", type=int, default=512,
                        help="Maximum sequence length")
@@ -174,8 +174,10 @@ def main():
     )
 
     logger.info("Training completed successfully!")
-    logger.info(f"Model saved to: {args.output_dir}")
-    logger.info(f"To use this model, load it with MCal_QLoRA_Model('{args.base_model}', '{args.output_dir}')")
+    logger.info(f"LoRA adapters saved to: {args.output_dir}")
+    logger.info(f"Merged model saved to: {args.output_dir}/merged_model")
+    logger.info(f"To use the adapter model, load it with MCal_QLoRA_Model('{args.base_model}', '{args.output_dir}')")
+    logger.info(f"To use the merged model, load it directly from '{args.output_dir}/merged_model'")
 
 if __name__ == "__main__":
     main()

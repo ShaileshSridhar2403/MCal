@@ -15,6 +15,8 @@ import torchvision.transforms as transforms
 from .base_loader import VisionDataLoader
 import pdb
 
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -145,7 +147,9 @@ class BreakHisLoader(VisionDataLoader):
             possible_paths = [
                 "./datasets/dataset_v2.zip",
                 "../datasets/dataset_v2.zip",
-                "../../datasets/dataset_v2.zip"
+                "../../datasets/dataset_v2.zip",
+                "/home/antonxue/shailesh/MCal/data/BreakHis/dataset_v2.zip",
+                "./data/BreakHis/dataset_v2.zip"
             ]
             
             for path in possible_paths:
@@ -287,45 +291,7 @@ class MRILoader(VisionDataLoader):
         return train_dataset, test_dataset, val_dataset
 
 
-class ChexPertLoader(VisionDataLoader):
-    """CheXpert chest X-ray dataset loader."""
-    
-    def __init__(
-        self,
-        data_dir: Optional[Union[str, Path]] = None,
-        cache_dir: Optional[Union[str, Path]] = None,
-        seed: int = 42,
-        image_size: int = 224
-    ):
-        super().__init__(data_dir, cache_dir, seed, image_size)
-        self.dataset_name = "chexpert"
-        self.num_classes = 14  # 14 pathology labels
-        self.dataset_info = {
-            "description": "Chest X-ray pathology classification",
-            "modality": "vision",
-            "task": "multi_label_classification"
-        }
-    
-    def download_dataset(self, **kwargs) -> None:
-        """Download CheXpert dataset."""
-        logger.warning(
-            "CheXpert dataset requires registration at "
-            "https://stanfordmlgroup.github.io/competitions/chexpert/"
-        )
-        # Dataset download would require manual registration
-    
-    def setup_dataset(
-        self,
-        train_dir: Optional[str] = None,
-        test_dir: Optional[str] = None,
-        val_dir: Optional[str] = None,
-        **kwargs
-    ) -> Tuple[Optional[Dataset], Optional[Dataset], Optional[Dataset]]:
-        """Setup CheXpert dataset."""
-        # This would need custom dataset class for multi-label classification
-        # and CSV parsing logic
-        logger.warning("CheXpert loader not fully implemented - requires custom dataset class")
-        return None, None, None
+
 
 
 class ImageNetLoader(VisionDataLoader):
@@ -382,8 +348,8 @@ class ImageNetLoader(VisionDataLoader):
         return train_dataset, test_dataset, val_dataset
 
 
-class ImageNetteLoader(VisionDataLoader):
-    """ImageNette (subset of ImageNet) dataset loader."""
+class ChexPertLoader(VisionDataLoader):
+    """CheXpert chest X-ray dataset loader."""
     
     def __init__(
         self,
@@ -393,86 +359,39 @@ class ImageNetteLoader(VisionDataLoader):
         image_size: int = 224
     ):
         super().__init__(data_dir, cache_dir, seed, image_size)
-        self.dataset_name = "imagenette"
-        self.num_classes = 10
+        self.dataset_name = "chexpert"
+        self.num_classes = 14  # 14 pathology labels
+        self.class_names = ["No Cardiomegaly","Cardiomegaly"]
         self.dataset_info = {
-            "description": "10-class subset of ImageNet",
+            "description": "Chest X-ray pathology classification",
             "modality": "vision",
-            "task": "classification"
+            "task": "multi_label_classification"
         }
     
-    def download_dataset(self, size: str = "320", **kwargs) -> None:
-        """Download ImageNette dataset.
-        
-        Args:
-            size: Image size variant ('160', '320', 'full')
-            **kwargs: Additional arguments
-        """
-        import urllib.request
-        
-        urls = {
-            "160": "https://s3.amazonaws.com/fast-ai-imageclas/imagenette2-160.tgz",
-            "320": "https://s3.amazonaws.com/fast-ai-imageclas/imagenette2-320.tgz", 
-            "full": "https://s3.amazonaws.com/fast-ai-imageclas/imagenette2.tgz"
-        }
-        
-        if size not in urls:
-            raise ValueError(f"Size must be one of {list(urls.keys())}")
-        
-        url = urls[size]
-        filename = url.split("/")[-1]
-        filepath = self.data_dir / filename
-        
-        if not filepath.exists():
-            logger.info(f"Downloading ImageNette ({size}) from {url}")
-            urllib.request.urlretrieve(url, filepath)
-            
-            # Extract
-            import tarfile
-            with tarfile.open(filepath, 'r:gz') as tar:
-                tar.extractall(self.data_dir)
-            
-            logger.info("ImageNette download and extraction complete")
+    def download_dataset(self, **kwargs) -> None:
+        """Download CheXpert dataset."""
+        logger.warning(
+            "CheXpert dataset requires registration at "
+            "https://stanfordmlgroup.github.io/competitions/chexpert/"
+        )
+        # Dataset download would require manual registration
     
     def setup_dataset(
         self,
         train_dir: Optional[str] = None,
         test_dir: Optional[str] = None,
         val_dir: Optional[str] = None,
-        size: str = "320",
         **kwargs
     ) -> Tuple[Optional[Dataset], Optional[Dataset], Optional[Dataset]]:
-        """Setup ImageNette dataset."""
-        # Download if necessary
-        self.download_dataset(size=size, **kwargs)
+        """Setup CheXpert dataset."""
+        # This would need custom dataset class for multi-label classification
+        # and CSV parsing logic
         
-        base_dir = self.data_dir / f"imagenette2-{size}"
-        if train_dir is None:
-            train_dir = str(base_dir / "train")
-        if val_dir is None:
-            val_dir = str(base_dir / "val")
-        
-        train_dataset = None
-        test_dataset = None
-        val_dataset = None
-        
-        if os.path.exists(train_dir):
-            train_transform = self.get_transforms("train", **kwargs)
-            train_dataset = datasets.ImageFolder(train_dir, transform=train_transform)
-        
-        if os.path.exists(val_dir):
-            val_transform = self.get_transforms("test", **kwargs)
-            val_dataset = datasets.ImageFolder(val_dir, transform=val_transform)
-        
-        # Update class information
-        if train_dataset is not None:
-            self.num_classes = len(train_dataset.classes)
-            self.class_names = train_dataset.classes
-        elif val_dataset is not None:
-            self.num_classes = len(val_dataset.classes)
-            self.class_names = val_dataset.classes
-        
-        return train_dataset, test_dataset, val_dataset
+
+        logger.warning("CheXpert loader not fully implemented - requires custom dataset class")
+
+        return None, None, None
+
 
 
 # Registry for easy access to loaders
@@ -481,7 +400,7 @@ VISION_LOADERS = {
     "mri": MRILoader,
     "chexpert": ChexPertLoader,
     "imagenet": ImageNetLoader,
-    "imagenette": ImageNetteLoader,
+    # "imagenette": ImageNetteLoader,
 }
 
 
@@ -547,3 +466,8 @@ def mri_full_setup(
     )
     
     return train_dataset, test_dataset
+
+
+
+
+

@@ -214,3 +214,7 @@ __marimo__/
 #project specific
 saved_models/
 results/cache/
+
+experiments/results/
+experiments/language/results/
+

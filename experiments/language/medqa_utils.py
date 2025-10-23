@@ -487,7 +487,7 @@ def generate_fractionwise_predictions_with_attention_mask(
 def load_local_medqa_data(n_samples=10, balanced=True):
     """Load MedQA dataset from local files following XAI-Benchmark pattern."""
     # Try to load from local balanced file first
-    balanced_file_path = "/home/antonxue/shailesh/MCal/data/language/balanced_dev.jsonl"
+    balanced_file_path = "/home/ayx98/foo/MCal/data/language/medqa_dev_balanced.jsonl"
 
     if not os.path.exists(balanced_file_path):
         raise FileNotFoundError(
