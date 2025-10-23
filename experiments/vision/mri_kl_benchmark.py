@@ -87,45 +87,62 @@ def load_mri_model(augmentation='vanilla', device=None):
 
 
 
-def calculate_kl_metrics(outputs, device=None):
-    """Calculate KL divergence metrics for outputs."""
+def calculate_kl_metrics(outputs, labels=None, device=None):
+    """Calculate KL divergence and accuracy metrics for outputs."""
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
+
     n_fractions, n_samples, n_outputs = outputs.shape
-    
+
     # Results storage
     kl_values_argmax = []
     kl_values_prob = []
-    
+    kl_values_accuracy = []
+
+    # Convert labels to tensor if provided
+    if labels is not None:
+        labels_tensor = torch.tensor(labels, dtype=torch.long, device=device)
+
     for fraction in range(n_fractions):
         fraction_preds = torch.tensor(outputs[fraction], dtype=torch.float32, device=device)
-        
+
         # Get expectations
         one_hot_expectation, prob_expectation = get_expectation(fraction_preds, device)
-        
+
         # Uniform distribution for comparison
         uniform_dist = torch.ones(n_outputs, device=device) / n_outputs
-        
+
         # Calculate KL divergences
         kl_argmax = kl_divergence(one_hot_expectation, uniform_dist).item()
         kl_prob = kl_divergence(prob_expectation, uniform_dist).item()
-        
+
         kl_values_argmax.append(kl_argmax)
         kl_values_prob.append(kl_prob)
-    
-        print(f"Fraction {fraction}/{n_fractions} - KL Argmax: {kl_argmax:.6f}, KL Prob: {kl_prob:.6f}")
-    # Calculate averages
 
-    
+        # Calculate accuracy if labels are provided
+        if labels is not None:
+            # Get predicted classes (argmax)
+            predicted_classes = torch.argmax(fraction_preds, dim=1)
+            # Calculate accuracy
+            accuracy = (predicted_classes == labels_tensor).float().mean().item()
+            kl_values_accuracy.append(accuracy)
+            print(f"Fraction {fraction}/{n_fractions} - KL Argmax: {kl_argmax:.6f}, KL Prob: {kl_prob:.6f}, Accuracy: {accuracy:.6f}")
+        else:
+            kl_values_accuracy.append(0.0)  # Default accuracy if no labels
+            print(f"Fraction {fraction}/{n_fractions} - KL Argmax: {kl_argmax:.6f}, KL Prob: {kl_prob:.6f}")
+
+    # Calculate averages
     avg_kl_argmax = np.mean(kl_values_argmax)
     avg_kl_prob = np.mean(kl_values_prob)
-    
+    avg_accuracy = np.mean(kl_values_accuracy)
+
     return {
         'average_kl_argmax': avg_kl_argmax,
         'average_kl_prob': avg_kl_prob,
+        'average_accuracy': avg_accuracy,
         'kl_values_argmax': kl_values_argmax,
-        'kl_values_prob': kl_values_prob
+        'kl_values_prob': kl_values_prob,
+        'kl_values_accuracy': kl_values_accuracy
     }
 
 
@@ -480,41 +497,49 @@ def apply_temperature_calibrator(outputs, labels, device, max_steps=1000, **kwar
 
 
 def aggregate_fractionwise_kl(fractionwise_results):
-    """Aggregate fractionwise KL divergence results across multiple runs."""
+    """Aggregate fractionwise KL divergence and accuracy results across multiple runs."""
     if not fractionwise_results or not fractionwise_results[0]:
-        return {"mean_argmax": [], "std_argmax": [], "mean_prob": [], "std_prob": []}
-    
+        return {"mean_argmax": [], "std_argmax": [], "mean_prob": [], "std_prob": [], "mean_accuracy": [], "std_accuracy": []}
+
     # Determine number of fractions from the first result
     first_result = fractionwise_results[0]
     if isinstance(first_result, dict) and 'kl_values_argmax' in first_result:
         num_fractions = len(first_result['kl_values_argmax'])
     else:
-        return {"mean_argmax": [], "std_argmax": [], "mean_prob": [], "std_prob": []}
-    
+        return {"mean_argmax": [], "std_argmax": [], "mean_prob": [], "std_prob": [], "mean_accuracy": [], "std_accuracy": []}
+
     # Initialize arrays to store values for each fraction across runs
     kl_argmax_values = [[] for _ in range(num_fractions)]
     kl_prob_values = [[] for _ in range(num_fractions)]
-    
+    accuracy_values = [[] for _ in range(num_fractions)]
+
     # Collect values across all runs
     for run_results in fractionwise_results:
         kl_argmax_list = run_results['kl_values_argmax']
         kl_prob_list = run_results['kl_values_prob']
-        
+        accuracy_list = run_results.get('kl_values_accuracy', [])
+
         for i in range(min(len(kl_argmax_list), num_fractions)):
             kl_argmax_values[i].append(kl_argmax_list[i])
             kl_prob_values[i].append(kl_prob_list[i])
-    
+            if i < len(accuracy_list):
+                accuracy_values[i].append(accuracy_list[i])
+
     # Calculate mean and standard deviation for each fraction
     mean_argmax = [np.mean(values) if values else 0.0 for values in kl_argmax_values]
     std_argmax = [np.std(values) if len(values) > 1 else 0.0 for values in kl_argmax_values]
     mean_prob = [np.mean(values) if values else 0.0 for values in kl_prob_values]
     std_prob = [np.std(values) if len(values) > 1 else 0.0 for values in kl_prob_values]
-    
+    mean_accuracy = [np.mean(values) if values else 0.0 for values in accuracy_values]
+    std_accuracy = [np.std(values) if len(values) > 1 else 0.0 for values in accuracy_values]
+
     return {
         "mean_argmax": mean_argmax,
         "std_argmax": std_argmax,
         "mean_prob": mean_prob,
-        "std_prob": std_prob
+        "std_prob": std_prob,
+        "mean_accuracy": mean_accuracy,
+        "std_accuracy": std_accuracy
     }
 
 
@@ -531,15 +556,18 @@ def aggregate_results(all_results):
         # Extract values across runs
         kl_prob_values = [r['average_kl_prob'] for r in results]
         kl_argmax_values = [r['average_kl_argmax'] for r in results]
-        
+        accuracy_values = [r.get('average_accuracy', 0) for r in results if r and 'average_accuracy' in r]
+
         # Aggregate fraction-wise results
         fraction_wise_results = aggregate_fractionwise_kl(results)
-        
+
         aggregated_results[method] = {
             'kl_transformed_mean_prob': np.mean(kl_prob_values),
             'kl_transformed_std_prob': np.std(kl_prob_values),
             'kl_transformed_mean_onehot': np.mean(kl_argmax_values),
             'kl_transformed_std_onehot': np.std(kl_argmax_values),
+            'accuracy_transformed_mean': np.mean(accuracy_values) if accuracy_values else 0.0,
+            'accuracy_transformed_std': np.std(accuracy_values) if len(accuracy_values) > 1 else 0.0,
             'fraction_wise_results_transformed': fraction_wise_results
         }
         
@@ -727,18 +755,19 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
                 )
             
             # Calculate KL metrics
-            kl_results = calculate_kl_metrics(transformed_predictions, device)
+            kl_results = calculate_kl_metrics(transformed_predictions, labels, device)
             all_results[method].append(kl_results)
-            
+
             print(f"  KL (prob): {kl_results['average_kl_prob']:.6f}")
             print(f"  KL (argmax): {kl_results['average_kl_argmax']:.6f}")
+            print(f"  Accuracy: {kl_results['average_accuracy']:.6f}")
     
     # Aggregate results
     print("\nAggregating results across all runs...")
     aggregated_results = aggregate_results(all_results)
     
     # Save results as JSON
-    pdb.set_trace()
+    # pdb.set_trace()
     json_path = os.path.join(save_dir, "json", "aggregated_results_mri.json")
     
     # Convert to JSON serializable format
@@ -760,7 +789,21 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
         f.write(f"KL Divergence Comparison for MRI (averaged over {n_runs} runs):\n")
         f.write(table)
     print(f"Comparison table saved to {table_path}")
-    
+
+    # Display fractionwise accuracy summary (following PhysioNet pattern)
+    print(f"\nFractionwise Accuracy Summary:")
+    for method in methods:
+        if method in aggregated_results:
+            fwr = aggregated_results[method].get('fraction_wise_results_transformed', {})
+            if 'mean_accuracy' in fwr and any(acc > 0 for acc in fwr['mean_accuracy']):
+                method_name = method.upper().replace('_', '_')
+                overall_acc = aggregated_results[method].get('accuracy_transformed_mean', 0)
+                overall_std = aggregated_results[method].get('accuracy_transformed_std', 0)
+                fractionwise_acc = np.mean(fwr['mean_accuracy'])
+                fractionwise_std = np.mean(fwr['std_accuracy'])
+                print(f"  {method_name}: Average fractionwise accuracy: {fractionwise_acc:.4f} ± {fractionwise_std:.4f}")
+                print(f"    Overall accuracy: {overall_acc:.4f} ± {overall_std:.4f}")
+
     return aggregated_results
 
 

@@ -131,8 +131,6 @@ def apply_transform(outputs, labels, method, device=None, **kwargs):
         return apply_mcal_calibrator(outputs, device, **kwargs)
     elif method == 'mcal_ce':
         return apply_mcal_ce_calibrator(outputs, labels, device, **kwargs)
-    elif method == 'mcal_ce_uncond':
-        return apply_mcal_ce_uncond_calibrator(outputs, labels, device, **kwargs)
     elif method == 'platt':
         return apply_platt_scaling(outputs, labels, device, **kwargs)
     elif method == 'temperature':
@@ -184,7 +182,7 @@ def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=10
     transformed_outputs = np.zeros_like(outputs_tensor.cpu().numpy())
 
     for fraction in tqdm(range(n_fractions), desc="Applying MCal_CE calibrator"):
-        calibrator = MCal_CE(num_classes=n_classes, head_type="linear")
+        calibrator = MCal_CE(num_classes=n_classes, head_type="mlp")
         calibrator.to(device)
         # pdb.set_trace()
         calibrator.fit(
@@ -207,51 +205,6 @@ def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=10
 
     return transformed_outputs
 
-
-def apply_mcal_ce_uncond_calibrator(outputs_tensor, target_labels, device, max_steps=10000, head_type="linear", experiment_id="medmcqa_experiment", **kwargs):
-    """Apply MCal_CE_Uncond calibrator (unconditional training approach)."""
-    # Convert numpy arrays to torch tensors if needed
-    if not isinstance(outputs_tensor, torch.Tensor):
-        outputs_tensor = torch.tensor(outputs_tensor, dtype=torch.float32, device=device)
-    if not isinstance(target_labels, torch.Tensor):
-        target_labels = torch.tensor(target_labels, dtype=torch.long, device=device)
-
-    n_fractions, n_samples, n_classes = outputs_tensor.shape
-    transformed_outputs = np.zeros_like(outputs_tensor.detach().cpu().numpy())
-    train_tensor = torch.zeros_like(outputs_tensor[0])
-
-    # Create training data by randomly sampling from all fractions
-    for i in range(n_samples):
-        fraction_ind = np.random.binomial(n_fractions-1, 0.5)  # Fix: n_fractions-1 to avoid out-of-bounds
-        train_tensor[i, :] = outputs_tensor[fraction_ind][i]
-
-    # Train single MCal_CE calibrator
-    calibrator = MCal_CE(num_classes=n_classes, head_type="mlp")
-    calibrator.to(device)
-    calibrator.fit(
-        ablated_probs=train_tensor,
-        target_labels=target_labels,
-        max_steps=max_steps,
-        lr=1e-3,  # Match MedMCQA pattern
-        verbose=True,
-        fraction=0,  # Placeholder for unconditional training
-        experiment_id=experiment_id
-    )
-
-    # Apply the single calibrator to all fractions
-    for fraction in tqdm(range(n_fractions), desc="Applying MCal_CE_Uncond calibrator"):
-        calibrated_probs = calibrator.forward(outputs_tensor[fraction])
-        transformed_outputs[fraction] = calibrated_probs.detach().cpu().numpy()
-
-    # Combine results
-    print(f"\n=== Combining MCal_CE_Uncond results for experiment: {experiment_id} ===")
-    combined_file = MCal_CE.combine_fraction_results(experiment_id, cleanup_temp_files=True)
-    if combined_file:
-        print(f"All MCal_CE_Uncond results combined and saved to: {combined_file}")
-
-    return transformed_outputs
-
-
 def apply_platt_scaling(outputs_tensor, target_labels, device, **kwargs):
     """Apply Platt scaling."""
     n_fractions, n_samples, n_classes = outputs_tensor.shape
@@ -265,9 +218,8 @@ def apply_platt_scaling(outputs_tensor, target_labels, device, **kwargs):
         labels = torch.from_numpy(target_labels).long()
 
         # Fit and transform
-        calibrator.fit(predictions, labels, verbose=False)
-        transformed_predictions = calibrator.forward(predictions)
-        transformed_outputs[fraction] = transformed_predictions.detach().numpy()
+        transformed_predictions = calibrator.fit_transform(predictions, labels)
+        transformed_outputs[fraction] = transformed_predictions.numpy()
 
     return transformed_outputs
 
@@ -277,16 +229,15 @@ def apply_temperature_scaling(outputs_tensor, target_labels, device, **kwargs):
     transformed_outputs = np.zeros_like(outputs_tensor)
 
     for fraction in tqdm(range(n_fractions), desc="Applying temperature scaling"):
-        calibrator = TemperatureScaling(num_classes=n_classes)
+        calibrator = TemperatureScaling()
 
         # Convert to tensors
         predictions = torch.from_numpy(outputs_tensor[fraction]).float()
         labels = torch.from_numpy(target_labels).long()
 
         # Fit and transform
-        calibrator.fit(predictions, labels, verbose=False)
-        transformed_predictions = calibrator.forward(predictions)
-        transformed_outputs[fraction] = transformed_predictions.detach().numpy()
+        transformed_predictions = calibrator.fit_transform(predictions, labels)
+        transformed_outputs[fraction] = transformed_predictions.numpy()
 
     return transformed_outputs
 
@@ -312,14 +263,15 @@ def kl_divergence(p, q, epsilon=1e-8):
     return torch.sum(p * torch.log(p / q))
 
 def load_medmcqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
-                     model_path="~/shailesh/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
+                     model_path="~/foo/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
                      use_real_data=True, balanced=True):
     """Load MedMCQA data following vision benchmark pattern."""
 
     print(f"Loading MedMCQA data with {n_samples} samples, {n_fractions} fractions...")
     print(f"Real data: {use_real_data}, Balanced: {balanced}")
 
-    if model_type in ["vanilla", "token_drop", "attention_mask"]:
+    if model_type in ["vanilla", "token_drop", "attention_mask", "qlora"]:
+        print("THE MODEL TYPE IS", model_type)
         # Load model
         expanded_path = Path(model_path).expanduser()
         model = load_medmcqa_llama_model(str(expanded_path))
@@ -355,8 +307,13 @@ def load_medmcqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
                 batch_size=min(8, n_samples),
                 num_options=4
             )
-        else:
+        elif model_type == "qlora":
             # Use standard word replacement strategy
+
+            expanded_path = Path("~/foo/MCal/saved_models/medmcqa/medmcqa_p0.0/merged_model").expanduser()
+            model = load_medmcqa_llama_model(str(expanded_path))
+            print(f"Using qlora merged model at: {expanded_path}")
+
             predictions = generate_fractionwise_predictions(
                 model=model,
                 data=medmcqa_questions,
@@ -365,6 +322,18 @@ def load_medmcqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
                 batch_size=min(8, n_samples),
                 num_options=4
             )
+            
+        else:
+            predictions = generate_fractionwise_predictions(
+                model=model,
+                data=medmcqa_questions,
+                removal_fractions=removal_fractions,
+                prompt_type='default',
+                batch_size=min(8, n_samples),
+                num_options=4
+            )
+
+        
     else:
         raise ValueError(f"Unknown model_type: {model_type}")
 
@@ -465,11 +434,11 @@ def save_results(results, save_dir="./results"):
             method_name = {
                 'mcal': 'MCal',
                 'mcal_ce': 'MCal_CE (Cross-Entropy)',
-                'mcal_ce_uncond': 'MCal_CE_Uncond (Unconditional)',
                 'platt': 'Platt Scaling',
                 'temperature': 'Temperature Scaling',
                 'token_drop': 'Token Dropping',
-                'attention_mask': 'Attention Masking'
+                'attention_mask': 'Attention Masking',
+                "qlora": "QLoRA"
             }.get(method, method.upper())
             kl_prob = data['kl_transformed_mean_prob']
             kl_prob_std = data['kl_transformed_std_prob']
@@ -512,12 +481,12 @@ def save_results(results, save_dir="./results"):
 
 def process_medmcqa_dataset(methods=None, device="cuda", save_dir="./results", n_runs=3,
                            n_samples=10, n_fractions=10,
-                           model_path="~/shailesh/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
+                           model_path="~/foo/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
                            use_real_data=True, balanced=True):
     """Process MedMCQA dataset with multiple calibration methods."""
 
     if methods is None:
-        methods = ['baseline', 'mcal', 'mcal_ce', 'mcal_ce_uncond', 'platt', 'temperature']
+        methods = ['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature']
 
     # Storage for all results
     all_results = {method: [] for method in methods}
@@ -528,7 +497,7 @@ def process_medmcqa_dataset(methods=None, device="cuda", save_dir="./results", n
         # Check which data types we need
         need_token_drop = 'token_drop' in methods
         need_attention_mask = 'attention_mask' in methods
-        need_vanilla = any(method not in ['token_drop', 'attention_mask'] for method in methods)
+        need_vanilla = any(method not in ['token_drop', 'attention_mask', 'qlora'] for method in methods)
 
         # Load data for different ablation strategies
         all_predictions = {}
@@ -584,22 +553,24 @@ def process_medmcqa_dataset(methods=None, device="cuda", save_dir="./results", n
             elif method == 'attention_mask':
                 predictions = all_predictions['attention_mask']
                 labels = all_labels['attention_mask']
+            elif method == 'qlora':
+                predictions = all_predictions['qlora']
+                labels = all_labels['qlora']
             else:
                 predictions = all_predictions['vanilla']
                 labels = all_labels['vanilla']
 
             # Apply transformation
-            if method in ['baseline', 'token_drop', 'attention_mask']:
+            if method in ['baseline', 'token_drop', 'attention_mask', 'qlora']:
                 # For baseline, token_drop, and attention_mask: no additional transformation needed
                 transformed_predictions = predictions.numpy()
             else:
                 print(f"Applying {method} transform...")
                 # Get method-specific kwargs
                 method_kwargs = {}
-                if method in ['mcal_ce', 'mcal_ce_uncond']:
+                if method == 'mcal_ce':
                     method_kwargs['max_steps'] = 10000
                     method_kwargs['experiment_id'] = f"medmcqa_experiment"
-                    method_kwargs['head_type'] = 'mlp'
                     # method_kwargs['lr'] = 1e-2
                 
                 labels = predictions[0].argmax(dim=-1)
@@ -628,8 +599,8 @@ def process_medmcqa_dataset(methods=None, device="cuda", save_dir="./results", n
 def main():
     parser = argparse.ArgumentParser(description="MedMCQA KL Divergence Benchmark")
     parser.add_argument("--methods", nargs='+', default=['baseline', 'mcal_ce'],
-                       choices=['baseline', 'mcal', 'mcal_ce', 'mcal_ce_uncond', 'platt', 'temperature', 'token_drop', 'attention_mask'],
-                       help="Calibration methods to evaluate (baseline, mcal, mcal_ce, mcal_ce_uncond, platt, temperature, token_drop, attention_mask)")
+                       choices=['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature', 'token_drop', 'attention_mask', 'qlora'],
+                       help="Calibration methods to evaluate")
     parser.add_argument("--device", type=str, default="cuda",
                        help="Device to use (cuda/cpu)")
     parser.add_argument("--save_dir", type=str, default="./results",
@@ -641,7 +612,7 @@ def main():
     parser.add_argument("--fractions", type=int, default=10,
                        help="Number of ablation fractions")
     parser.add_argument("--model_path", type=str,
-                       default="~/shailesh/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
+                       default="~/foo/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
                        help="Path to LLaMA model")
     parser.add_argument("--use_real_data", action="store_true", default=True,
                        help="Use real MedMCQA dataset (default: True)")

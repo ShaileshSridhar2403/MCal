@@ -121,9 +121,9 @@ def calculate_kl_metrics(outputs, labels=None, device=None):
 
     if accuracy_values:
         avg_accuracy = np.mean(accuracy_values)
-        result['accuracy_values'] = accuracy_values
+        result['kl_values_accuracy'] = accuracy_values
         result['average_accuracy'] = avg_accuracy
-
+    # pdb.set_trace()
     return result
 
 def apply_transform(outputs, labels, method, device=None, **kwargs):
@@ -141,6 +141,9 @@ def apply_transform(outputs, labels, method, device=None, **kwargs):
 
     elif method == 'mcal_ce':
         return apply_mcal_ce_calibrator(outputs, labels, device, **kwargs)
+
+    elif method == 'mcal_ce_uncond':
+        return apply_mcal_ce_uncond_calibrator(outputs, labels, device, **kwargs)
 
     elif method == 'platt':
         return apply_platt_calibrator(outputs, labels, device, **kwargs)
@@ -211,7 +214,7 @@ def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=50
     transformed_outputs = np.zeros_like(outputs_tensor.cpu().numpy())
 
     for fraction in tqdm(range(n_fractions), desc="Applying MCal_CE calibrator"):
-        calibrator = MCal_CE(num_classes=n_classes, head_type="mlp")
+        calibrator = MCal_CE(num_classes=n_classes, head_type="linear")
         calibrator.to(device)
         # pdb.set_trace()
         calibrator.fit(
@@ -234,6 +237,54 @@ def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=50
         print(f"All MCal_CE results combined and saved to: {combined_file}")
 
     return transformed_outputs
+
+
+def apply_mcal_ce_uncond_calibrator(outputs_tensor, target_labels, device, max_steps=5000, head_type="linear", experiment_id="medqa_experiment", **kwargs):
+    """Apply MCal_CE_Uncond calibrator (unconditional training approach)."""
+    # Convert numpy arrays to torch tensors if needed
+    if not isinstance(outputs_tensor, torch.Tensor):
+        outputs_tensor = torch.tensor(outputs_tensor, dtype=torch.float32, device=device)
+    if not isinstance(target_labels, torch.Tensor):
+        target_labels = torch.tensor(target_labels, dtype=torch.long, device=device)
+
+    # Use fraction 0 predictions as target labels (following MedQA pattern)
+    target_labels = outputs_tensor[0].argmax(dim=-1)
+
+    n_fractions, n_samples, n_classes = outputs_tensor.shape
+    transformed_outputs = np.zeros_like(outputs_tensor.detach().cpu().numpy())
+    train_tensor = torch.zeros_like(outputs_tensor[0])
+
+    # Create training data by randomly sampling from all fractions
+    for i in range(n_samples):
+        fraction_ind = np.random.binomial(n_fractions-1, 0.5)  # Fix: n_fractions-1 to avoid out-of-bounds
+        train_tensor[i, :] = outputs_tensor[fraction_ind][i]
+
+    # Train single MCal_CE calibrator
+    calibrator = MCal_CE(num_classes=n_classes, head_type=head_type)
+    calibrator.to(device)
+    calibrator.fit(
+        ablated_probs=train_tensor,
+        target_labels=target_labels,
+        max_steps=max_steps,
+        lr=1e-2,  # Match MedQA pattern
+        verbose=True,
+        fraction=0,  # Placeholder for unconditional training
+        experiment_id=experiment_id
+    )
+
+    # Apply the single calibrator to all fractions
+    for fraction in tqdm(range(n_fractions), desc="Applying MCal_CE_Uncond calibrator"):
+        calibrated_probs = calibrator.forward(outputs_tensor[fraction])
+        transformed_outputs[fraction] = calibrated_probs.detach().cpu().numpy()
+
+    # Combine results
+    print(f"\n=== Combining MCal_CE_Uncond results for experiment: {experiment_id} ===")
+    combined_file = MCal_CE.combine_fraction_results(experiment_id, cleanup_temp_files=True)
+    if combined_file:
+        print(f"All MCal_CE_Uncond results combined and saved to: {combined_file}")
+
+    return transformed_outputs
+
 
 def apply_platt_calibrator(outputs, labels, device, max_steps=1000, **kwargs):
     """Apply Platt scaling calibrator."""
@@ -309,35 +360,45 @@ def apply_logits_sharp_transform(outputs, device, **kwargs):
 def aggregate_fractionwise_kl(fractionwise_results):
     """Aggregate fractionwise KL divergence results across multiple runs."""
     if not fractionwise_results or not fractionwise_results[0]:
-        return {"mean_argmax": [], "std_argmax": [], "mean_prob": [], "std_prob": []}
+        return {"mean_argmax": [], "std_argmax": [], "mean_prob": [], "std_prob": [], "mean_accuracy": [], "std_accuracy": []}
 
     first_result = fractionwise_results[0]
     if isinstance(first_result, dict) and 'kl_values_argmax' in first_result:
         num_fractions = len(first_result['kl_values_argmax'])
     else:
-        return {"mean_argmax": [], "std_argmax": [], "mean_prob": [], "std_prob": []}
+        return {"mean_argmax": [], "std_argmax": [], "mean_prob": [], "std_prob": [], "mean_accuracy": [], "std_accuracy": []}
 
     kl_argmax_values = [[] for _ in range(num_fractions)]
     kl_prob_values = [[] for _ in range(num_fractions)]
+    accuracy_values = [[] for _ in range(num_fractions)]
 
     for run_results in fractionwise_results:
         kl_argmax_list = run_results['kl_values_argmax']
         kl_prob_list = run_results['kl_values_prob']
+        accuracy_list = run_results.get('kl_values_accuracy', [])
 
         for i in range(min(len(kl_argmax_list), num_fractions)):
             kl_argmax_values[i].append(kl_argmax_list[i])
             kl_prob_values[i].append(kl_prob_list[i])
 
+            # Add accuracy if available
+            if i < len(accuracy_list):
+                accuracy_values[i].append(accuracy_list[i])
+
     mean_argmax = [np.mean(values) if values else 0.0 for values in kl_argmax_values]
     std_argmax = [np.std(values) if len(values) > 1 else 0.0 for values in kl_argmax_values]
     mean_prob = [np.mean(values) if values else 0.0 for values in kl_prob_values]
     std_prob = [np.std(values) if len(values) > 1 else 0.0 for values in kl_prob_values]
+    mean_accuracy = [np.mean(values) if values else 0.0 for values in accuracy_values]
+    std_accuracy = [np.std(values) if len(values) > 1 else 0.0 for values in accuracy_values]
 
     return {
         "mean_argmax": mean_argmax,
         "std_argmax": std_argmax,
         "mean_prob": mean_prob,
-        "std_prob": std_prob
+        "std_prob": std_prob,
+        "mean_accuracy": mean_accuracy,
+        "std_accuracy": std_accuracy
     }
 
 def aggregate_results(all_results):
@@ -351,6 +412,9 @@ def aggregate_results(all_results):
         kl_prob_values = [r['average_kl_prob'] for r in results]
         kl_argmax_values = [r['average_kl_argmax'] for r in results]
 
+        # Extract accuracy values if available
+        accuracy_values = [r.get('average_accuracy', 0) for r in results if r and 'average_accuracy' in r]
+
         fraction_wise_results = aggregate_fractionwise_kl(results)
 
         aggregated_results[method] = {
@@ -360,6 +424,11 @@ def aggregate_results(all_results):
             'kl_transformed_std_onehot': np.std(kl_argmax_values),
             'fraction_wise_results_transformed': fraction_wise_results
         }
+
+        # Add accuracy metrics if available
+        if accuracy_values:
+            aggregated_results[method]['accuracy_transformed_mean'] = np.mean(accuracy_values)
+            aggregated_results[method]['accuracy_transformed_std'] = np.std(accuracy_values) if len(accuracy_values) > 1 else 0.0
 
         # For baseline, also store as baseline results
         if method == 'baseline':
@@ -381,6 +450,7 @@ def build_kl_comparison_table(aggregated_results, include_methods=None):
         'baseline': "Original",
         'mcal': "MCal (Vector Scaling)",
         'mcal_ce': "MCal_CE (Cross-Entropy)",
+        'mcal_ce_uncond': "MCal_CE_Uncond (Unconditional)",
         'platt': "Platt Scaling",
         'temperature': "Temperature Scaling",
         'token_drop': "Token Dropping",
@@ -496,6 +566,10 @@ def load_medqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
         predictions = torch.from_numpy(predictions).float()
         labels = torch.from_numpy(labels).long()
 
+        # pdb.set_trace()
+        model.model.cpu()
+        del model
+
         return predictions, labels
 
     else:
@@ -508,7 +582,7 @@ def process_medqa_dataset(methods=None, device="cuda", save_dir="./results", n_r
     """Process MedQA dataset and generate KL benchmarks - IDENTICAL STRUCTURE to vision."""
 
     if methods is None:
-        methods = ['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature']
+        methods = ['baseline', 'mcal', 'mcal_ce', 'mcal_ce_uncond', 'platt', 'temperature']
 
     device = torch.device(device)
 
@@ -604,11 +678,11 @@ def process_medqa_dataset(methods=None, device="cuda", save_dir="./results", n_r
                 else:
                     # Configure method-specific parameters
                     method_kwargs = {}
-                    if method in ['mcal', 'mcal_ce', 'platt', 'temperature']:
+                    if method in ['mcal', 'mcal_ce', 'mcal_ce_uncond', 'platt', 'temperature']:
                         method_kwargs['max_steps'] = 1000
                     if method == 'mcal':
                         method_kwargs['kappa'] = 10.0
-                    elif method == 'mcal_ce':
+                    elif method in ['mcal_ce', 'mcal_ce_uncond']:
                         method_kwargs['max_steps'] = 5000
                         method_kwargs['head_type'] = 'linear'
 
@@ -628,7 +702,7 @@ def process_medqa_dataset(methods=None, device="cuda", save_dir="./results", n_r
     # Aggregate results
     print("\nAggregating results across all runs...")
     aggregated_results = aggregate_results(all_results)
-
+    # pdb.set_trace()
     # Save results as JSON
     json_path = os.path.join(save_dir, "json", "aggregated_results_medqa.json")
     json_serializable_results = convert_to_json_serializable(aggregated_results)
@@ -649,6 +723,30 @@ def process_medqa_dataset(methods=None, device="cuda", save_dir="./results", n_r
         f.write(f"KL Divergence Comparison for MedQA (averaged over {n_runs} runs):\n")
         f.write(table)
     print(f"Comparison table saved to {table_path}")
+
+    # Display fractionwise accuracy summary (following MRI pattern)
+    print(f"\nFractionwise Accuracy Summary:")
+    for method, result in aggregated_results.items():
+        if method == 'baseline' and 'fraction_wise_results' in result:
+            fwr = result['fraction_wise_results']
+            if 'mean_accuracy' in fwr and any(acc > 0 for acc in fwr['mean_accuracy']):
+                avg_accuracy = np.mean(fwr['mean_accuracy'])
+                std_accuracy = np.std(fwr['mean_accuracy'])
+                print(f"  {method.upper()}: Average fractionwise accuracy: {avg_accuracy:.4f} ± {std_accuracy:.4f}")
+                if 'accuracy_transformed_mean' in result:
+                    overall_mean = result['accuracy_transformed_mean']
+                    overall_std = result.get('accuracy_transformed_std', 0.0)
+                    print(f"    Overall accuracy: {overall_mean:.4f} ± {overall_std:.4f}")
+        elif 'fraction_wise_results_transformed' in result:
+            fwr = result['fraction_wise_results_transformed']
+            if 'mean_accuracy' in fwr and any(acc > 0 for acc in fwr['mean_accuracy']):
+                avg_accuracy = np.mean(fwr['mean_accuracy'])
+                std_accuracy = np.std(fwr['mean_accuracy'])
+                print(f"  {method.upper()}: Average fractionwise accuracy: {avg_accuracy:.4f} ± {std_accuracy:.4f}")
+                if 'accuracy_transformed_mean' in result:
+                    overall_mean = result['accuracy_transformed_mean']
+                    overall_std = result.get('accuracy_transformed_std', 0.0)
+                    print(f"    Overall accuracy: {overall_mean:.4f} ± {overall_std:.4f}")
 
     return aggregated_results
 
@@ -672,7 +770,7 @@ def main():
     parser = argparse.ArgumentParser(description="MedQA KL Divergence Benchmark")
     parser.add_argument("--methods", nargs='+',
                        default=['baseline', 'mcal', 'platt', 'temperature'],
-                       help="Methods to include in benchmark (baseline, mcal, mcal_ce, platt, temperature, token_drop, attention_mask)")
+                       help="Methods to include in benchmark (baseline, mcal, mcal_ce, mcal_ce_uncond, platt, temperature, token_drop, attention_mask)")
     parser.add_argument("--runs", type=int, default=3, help="Number of runs")
     parser.add_argument("--samples", type=int, default=10, help="Samples per run")
     parser.add_argument("--fractions", type=int, default=10, help="Number of fractions")

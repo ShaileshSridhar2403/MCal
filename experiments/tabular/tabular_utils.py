@@ -107,48 +107,56 @@ def calculate_missingness_statistics(X):
 
 def aggregate_fractionwise_kl(fractionwise_results):
     """
-    Aggregate fractionwise KL divergence results across multiple runs.
+    Aggregate fractionwise KL divergence and accuracy results across multiple runs.
 
     Args:
-        fractionwise_results: List of run results containing kl_values_argmax and kl_values_prob
+        fractionwise_results: List of run results containing kl_values_argmax, kl_values_prob, and kl_values_accuracy
 
     Returns:
         dict: Aggregated fractionwise results
     """
     if not fractionwise_results or not fractionwise_results[0]:
-        return {"mean_argmax": [], "std_argmax": [], "mean_prob": [], "std_prob": []}
+        return {"mean_argmax": [], "std_argmax": [], "mean_prob": [], "std_prob": [], "mean_accuracy": [], "std_accuracy": []}
 
     # Determine number of fractions
     first_result = fractionwise_results[0]
     if isinstance(first_result, dict) and 'kl_values_argmax' in first_result:
         num_fractions = len(first_result['kl_values_argmax'])
     else:
-        return {"mean_argmax": [], "std_argmax": [], "mean_prob": [], "std_prob": []}
+        return {"mean_argmax": [], "std_argmax": [], "mean_prob": [], "std_prob": [], "mean_accuracy": [], "std_accuracy": []}
 
     # Initialize arrays for each fraction
     kl_argmax_values = [[] for _ in range(num_fractions)]
     kl_prob_values = [[] for _ in range(num_fractions)]
+    accuracy_values = [[] for _ in range(num_fractions)]
 
     # Collect values across all runs
     for run_results in fractionwise_results:
         kl_argmax_list = run_results['kl_values_argmax']
         kl_prob_list = run_results['kl_values_prob']
+        accuracy_list = run_results.get('kl_values_accuracy', [])
 
         for i in range(min(len(kl_argmax_list), num_fractions)):
             kl_argmax_values[i].append(kl_argmax_list[i])
             kl_prob_values[i].append(kl_prob_list[i])
+            if i < len(accuracy_list):
+                accuracy_values[i].append(accuracy_list[i])
 
     # Calculate mean and standard deviation
     mean_argmax = [np.mean(values) if values else 0.0 for values in kl_argmax_values]
     std_argmax = [np.std(values) if len(values) > 1 else 0.0 for values in kl_argmax_values]
     mean_prob = [np.mean(values) if values else 0.0 for values in kl_prob_values]
     std_prob = [np.std(values) if len(values) > 1 else 0.0 for values in kl_prob_values]
+    mean_accuracy = [np.mean(values) if values else 0.0 for values in accuracy_values]
+    std_accuracy = [np.std(values) if len(values) > 1 else 0.0 for values in accuracy_values]
 
     return {
         "mean_argmax": mean_argmax,
         "std_argmax": std_argmax,
         "mean_prob": mean_prob,
-        "std_prob": std_prob
+        "std_prob": std_prob,
+        "mean_accuracy": mean_accuracy,
+        "std_accuracy": std_accuracy
     }
 
 
@@ -171,6 +179,7 @@ def aggregate_results(all_results):
         # Extract values across runs
         kl_prob_values = [r['average_kl_prob'] for r in results]
         kl_argmax_values = [r['average_kl_argmax'] for r in results]
+        accuracy_values = [r.get('average_accuracy', 0) for r in results if r and 'average_accuracy' in r]
 
         # Aggregate fraction-wise results
         fraction_wise_results = aggregate_fractionwise_kl(results)
@@ -180,6 +189,8 @@ def aggregate_results(all_results):
             'kl_transformed_std_prob': np.std(kl_prob_values),
             'kl_transformed_mean_onehot': np.mean(kl_argmax_values),
             'kl_transformed_std_onehot': np.std(kl_argmax_values),
+            'accuracy_transformed_mean': np.mean(accuracy_values) if accuracy_values else 0.0,
+            'accuracy_transformed_std': np.std(accuracy_values) if len(accuracy_values) > 1 else 0.0,
             'fraction_wise_results_transformed': fraction_wise_results
         }
 

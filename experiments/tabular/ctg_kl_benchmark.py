@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-Clean PhysioNet KL Divergence Benchmark
+Clean CTG KL Divergence Benchmark
 
 This benchmark file only handles:
-1. Loading data via physionet_data_setup.py
+1. Loading data via ctg_data_setup.py
 2. Applying transforms (calibration methods)
 3. Calculating KL metrics
 4. Saving results
 
-All data generation logic is in physionet_data_setup_simple.py
+All data generation logic is in ctg_data_setup.py
+(Following the PhysioNet benchmark pattern exactly)
 """
 
 import sys
@@ -34,11 +35,7 @@ from calibrators.platt import PlattCalibrator
 from calibrators.temperature import TemperatureScaling
 
 # Import data setup (from current directory)
-
-from physionet_data_setup import load_physionet_data
-
-
-
+from ctg_data_setup import load_ctg_data
 
 # Import result utilities (from current directory)
 try:
@@ -53,73 +50,17 @@ except ImportError:
     print("Warning: tabular_utils not found - using fallback functions")
 
     # Fallback functions
-    def aggregate_results(all_results):
-        """Aggregate results across multiple runs with fractionwise KL and accuracy calculation."""
-        aggregated_results = {}
-
-        for method in all_results.keys():
-            results = all_results[method]
-
-            # Extract overall metrics
-            kl_prob_values = [r.get('average_kl_prob', 0) for r in results if r]
-            kl_argmax_values = [r.get('average_kl_argmax', 0) for r in results if r]
-            accuracy_values = [r.get('average_accuracy', 0) for r in results if r and 'average_accuracy' in r]
-
-            # Aggregate fraction-wise results
-            fraction_wise_results = aggregate_fractionwise_kl(results)
-
-            aggregated_results[method] = {
-                'kl_transformed_mean_prob': np.mean(kl_prob_values) if kl_prob_values else 0.0,
-                'kl_transformed_std_prob': np.std(kl_prob_values) if len(kl_prob_values) > 1 else 0.0,
-                'kl_transformed_mean_onehot': np.mean(kl_argmax_values) if kl_argmax_values else 0.0,
-                'kl_transformed_std_onehot': np.std(kl_argmax_values) if len(kl_argmax_values) > 1 else 0.0,
-                'accuracy_transformed_mean': np.mean(accuracy_values) if accuracy_values else 0.0,
-                'accuracy_transformed_std': np.std(accuracy_values) if len(accuracy_values) > 1 else 0.0,
-                'fraction_wise_results_transformed': fraction_wise_results
-            }
-
-            # For baseline, also store as baseline results
-            if method == 'baseline':
-                aggregated_results[method].update({
-                    'kl_baseline_mean_prob': np.mean(kl_prob_values) if kl_prob_values else 0.0,
-                    'kl_baseline_std_prob': np.std(kl_prob_values) if len(kl_prob_values) > 1 else 0.0,
-                    'kl_baseline_mean_onehot': np.mean(kl_argmax_values) if kl_argmax_values else 0.0,
-                    'kl_baseline_std_onehot': np.std(kl_argmax_values) if len(kl_argmax_values) > 1 else 0.0,
-                    'accuracy_baseline_mean': np.mean(accuracy_values) if accuracy_values else 0.0,
-                    'accuracy_baseline_std': np.std(accuracy_values) if len(accuracy_values) > 1 else 0.0,
-                    'fraction_wise_results': fraction_wise_results
-                })
-
-        return aggregated_results
+    def aggregate_results(results):
+        return results
 
     def build_kl_comparison_table(results):
         return str(results)
 
-    def save_results(results, save_dir, dataset_name, n_runs=1):
-        # Create save directory if it doesn't exist
-        os.makedirs(save_dir, exist_ok=True)
-
-        # Save with the correct filename for PhysioNet
-        json_path = f"{save_dir}/physionet_results.json"
+    def save_results(results, save_dir, dataset_name):
+        json_path = f"{save_dir}/results.json"
         with open(json_path, 'w') as f:
             import json
-            # Convert numpy types to regular Python types for JSON serialization
-            def convert_numpy(obj):
-                if isinstance(obj, np.ndarray):
-                    return obj.tolist()
-                elif isinstance(obj, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64,
-                                     np.uint8, np.uint16, np.uint32, np.uint64)):
-                    return int(obj)
-                elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
-                    return float(obj)
-                elif isinstance(obj, dict):
-                    return {k: convert_numpy(v) for k, v in obj.items()}
-                elif isinstance(obj, list):
-                    return [convert_numpy(v) for v in obj]
-                return obj
-
-            serializable_results = convert_numpy(results)
-            json.dump(serializable_results, f, indent=2)
+            json.dump(results, f, indent=2)
         return json_path, None, None
 
     def convert_to_json_serializable(obj):
@@ -128,56 +69,6 @@ except ImportError:
     def plot_kl_divergence(results, save_path):
         pass
 
-def aggregate_fractionwise_kl(fractionwise_results):
-    """Aggregate fractionwise KL divergence and accuracy results across multiple runs."""
-    if not fractionwise_results or not fractionwise_results[0]:
-        return {"mean_argmax": [], "std_argmax": [], "mean_prob": [], "std_prob": [], "mean_accuracy": [], "std_accuracy": []}
-
-    # Determine number of fractions from the first result
-    first_result = fractionwise_results[0]
-    if isinstance(first_result, dict) and 'kl_values_argmax' in first_result:
-        num_fractions = len(first_result['kl_values_argmax'])
-    else:
-        return {"mean_argmax": [], "std_argmax": [], "mean_prob": [], "std_prob": [], "mean_accuracy": [], "std_accuracy": []}
-
-    # Initialize arrays to store values for each fraction across runs
-    kl_argmax_values = [[] for _ in range(num_fractions)]
-    kl_prob_values = [[] for _ in range(num_fractions)]
-    accuracy_values = [[] for _ in range(num_fractions)]
-
-    # Collect values across all runs
-    for run_results in fractionwise_results:
-        kl_argmax_list = run_results['kl_values_argmax']
-        kl_prob_list = run_results['kl_values_prob']
-
-        for i in range(min(len(kl_argmax_list), num_fractions)):
-            kl_argmax_values[i].append(kl_argmax_list[i])
-            kl_prob_values[i].append(kl_prob_list[i])
-
-        # Collect accuracy values if available
-        if 'kl_values_accuracy' in run_results:
-            accuracy_list = run_results['kl_values_accuracy']
-            for i in range(min(len(accuracy_list), num_fractions)):
-                accuracy_values[i].append(accuracy_list[i])
-
-    # Calculate mean and standard deviation for each fraction
-    mean_argmax = [np.mean(values) if values else 0.0 for values in kl_argmax_values]
-    std_argmax = [np.std(values) if len(values) > 1 else 0.0 for values in kl_argmax_values]
-    mean_prob = [np.mean(values) if values else 0.0 for values in kl_prob_values]
-    std_prob = [np.std(values) if len(values) > 1 else 0.0 for values in kl_prob_values]
-    mean_accuracy = [np.mean(values) if values else 0.0 for values in accuracy_values]
-    std_accuracy = [np.std(values) if len(values) > 1 else 0.0 for values in accuracy_values]
-
-    return {
-        "mean_argmax": mean_argmax,
-        "std_argmax": std_argmax,
-        "mean_prob": mean_prob,
-        "std_prob": std_prob,
-        "mean_accuracy": mean_accuracy,
-        "std_accuracy": std_accuracy
-    }
-
-
 # MCal optimization utilities
 from utils.optimization import kl_divergence, get_expectation
 
@@ -185,6 +76,7 @@ from utils.optimization import kl_divergence, get_expectation
 def calculate_kl_metrics(outputs, labels=None, device=None):
     """
     Calculate KL divergence metrics using expectation approach.
+    (Identical to PhysioNet version)
 
     Args:
         outputs (np.ndarray): Model predictions of shape (n_fractions, n_samples, n_classes)
@@ -203,23 +95,10 @@ def calculate_kl_metrics(outputs, labels=None, device=None):
     if not isinstance(outputs, torch.Tensor):
         outputs = torch.tensor(outputs, dtype=torch.float32, device=device)
 
-    # Process labels once outside the loop
-    processed_labels = None
-    if labels is not None:
-        if not isinstance(labels, torch.Tensor):
-            processed_labels = torch.tensor(labels, dtype=torch.long, device=device)
-        else:
-            processed_labels = labels.to(device)
-
     # Calculate expectation for each fraction
     expectations_prob = []
     expectations_argmax = []
     accuracies = []
-    kl_values_argmax = []
-    kl_values_prob = []
-
-    # Create uniform distribution for KL calculation
-    uniform_dist = torch.full((n_outputs,), 1.0 / n_outputs, device=device)
 
     for fraction in range(n_fractions):
         probs = outputs[fraction]
@@ -236,43 +115,38 @@ def calculate_kl_metrics(outputs, labels=None, device=None):
         exp_argmax, _ = get_expectation(one_hot)
         expectations_argmax.append(exp_argmax)
 
-        # Calculate fraction-wise KL divergences
-        kl_argmax = kl_divergence(exp_argmax, uniform_dist).item()
-        kl_prob = kl_divergence(exp_prob, uniform_dist).item()
-
-        kl_values_argmax.append(kl_argmax)
-        kl_values_prob.append(kl_prob)
-
         # Calculate accuracy if labels provided
-        if processed_labels is not None:
+        if labels is not None:
+            if not isinstance(labels, torch.Tensor):
+                labels = torch.tensor(labels, dtype=torch.long, device=device)
+            else:
+                labels = labels.to(device)
             pred_labels = probs.argmax(dim=-1)
-            accuracy = (pred_labels == processed_labels).float().mean().item()
+
+            accuracy = (pred_labels == labels).float().mean().item()
             accuracies.append(accuracy)
 
     # Stack expectations
     expectations_prob = torch.stack(expectations_prob)  # (n_fractions, n_classes)
     expectations_argmax = torch.stack(expectations_argmax)  # (n_fractions, n_classes)
 
-    # Calculate average KL divergences
-    avg_kl_prob = np.mean(kl_values_prob)
-    avg_kl_argmax = np.mean(kl_values_argmax)
+    # Calculate KL divergences (mean over fractions)
+    kl_prob = kl_divergence(expectations_prob[0], expectations_prob.mean(dim=0))
+    kl_argmax = kl_divergence(expectations_argmax[0], expectations_argmax.mean(dim=0))
 
     results = {
-        'average_kl_prob': avg_kl_prob,
-        'average_kl_argmax': avg_kl_argmax,
-        'kl_values_argmax': kl_values_argmax,
-        'kl_values_prob': kl_values_prob
+        'average_kl_prob': kl_prob.item(),
+        'average_kl_argmax': kl_argmax.item(),
     }
 
-    if processed_labels is not None and accuracies:
+    if labels is not None and accuracies:
         results['average_accuracy'] = np.mean(accuracies)
-        results['kl_values_accuracy'] = accuracies  # Fractionwise accuracy values
 
     return results
 
 
 def apply_transform(outputs, labels, method, device=None, **kwargs):
-    """Apply a transformation method to outputs."""
+    """Apply a transformation method to outputs. (Identical to PhysioNet version)"""
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -286,9 +160,6 @@ def apply_transform(outputs, labels, method, device=None, **kwargs):
 
     elif method == 'mcal_ce':
         return apply_mcal_ce_calibrator(outputs, labels, device, **kwargs)
-
-    elif method == 'mcal_ce_uncond':
-        return apply_mcal_ce_uncond_calibrator(outputs, labels, device, **kwargs)
 
     elif method == 'platt':
         return apply_platt_calibrator(outputs, labels, device, **kwargs)
@@ -320,11 +191,11 @@ def apply_transform(outputs, labels, method, device=None, **kwargs):
 
 
 def apply_mcal_calibrator(outputs, device, kappa=4.0, max_steps=10000, **kwargs):
-    """Apply MCal calibrator."""
+    """Apply MCal calibrator. (Adapted for 3-class CTG)"""
     n_fractions, n_samples, n_classes = outputs.shape
     transformed_outputs = np.zeros_like(outputs)
 
-    # Create uniform target distribution
+    # Create uniform target distribution for 3 classes
     uniform_target = torch.full((n_classes,), 1.0 / n_classes, device=device)
 
     # Train calibrators for each fraction
@@ -354,8 +225,8 @@ def apply_mcal_calibrator(outputs, device, kappa=4.0, max_steps=10000, **kwargs)
 
 
 def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=5000,
-                           head_type="linear", experiment_id="physionet_experiment", **kwargs):
-    """Apply MCal_CE calibrator using cross-entropy loss."""
+                           head_type="linear", experiment_id="ctg_experiment", **kwargs):
+    """Apply MCal_CE calibrator using cross-entropy loss. (Identical to PhysioNet version)"""
     # Convert numpy arrays to torch tensors if needed
     if not isinstance(outputs_tensor, torch.Tensor):
         outputs_tensor = torch.tensor(outputs_tensor, dtype=torch.float32, device=device)
@@ -393,57 +264,8 @@ def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=50
     return transformed_outputs
 
 
-def apply_mcal_ce_uncond_calibrator(outputs_tensor, target_labels, device, max_steps=5000,
-                                   head_type="linear", experiment_id="physionet_experiment", **kwargs):
-    """Apply MCal_CE_Uncond calibrator using unconditional training approach."""
-    # Convert numpy arrays to torch tensors if needed
-    if not isinstance(outputs_tensor, torch.Tensor):
-        outputs_tensor = torch.tensor(outputs_tensor, dtype=torch.float32, device=device)
-    if not isinstance(target_labels, torch.Tensor):
-        target_labels = torch.tensor(target_labels, dtype=torch.long, device=device)
-
-    n_fractions, n_samples, n_classes = outputs_tensor.shape
-    transformed_outputs = np.zeros_like(outputs_tensor.cpu().numpy())
-
-    # Create training tensor by randomly sampling from all fractions
-    train_tensor = torch.zeros_like(outputs_tensor[0])
-
-    for i in range(n_samples):
-        fraction_ind = np.random.binomial(n_fractions-1, 0.5)  # Random fraction selection
-        train_tensor[i, :] = outputs_tensor[fraction_ind][i]
-
-    # Use clean predictions (fraction 0) as target labels for training
-    training_labels = outputs_tensor[0].argmax(dim=-1)
-
-    # Create and fit single MCal_CE calibrator
-    calibrator = MCal_CE(num_classes=n_classes, head_type=head_type)
-    calibrator.to(device)
-    calibrator.fit(
-        ablated_probs=train_tensor,
-        target_labels=training_labels,
-        max_steps=max_steps,
-        lr=1e-3,
-        verbose=True,
-        fraction=0,  # Use 0 as placeholder for unconditional training
-        experiment_id=experiment_id
-    )
-
-    # Apply the single calibrator to all fractions
-    for fraction in tqdm(range(n_fractions), desc="Applying MCal_CE_Uncond calibrator"):
-        calibrated_probs = calibrator.forward(outputs_tensor[fraction])
-        transformed_outputs[fraction] = calibrated_probs.detach().cpu().numpy()
-
-    # Combine results
-    print(f"\n=== Combining MCal_CE_Uncond results for experiment: {experiment_id} ===")
-    combined_file = MCal_CE.combine_fraction_results(experiment_id, cleanup_temp_files=True)
-    if combined_file:
-        print(f"All MCal_CE_Uncond results combined and saved to: {combined_file}")
-
-    return transformed_outputs
-
-
 def apply_platt_calibrator(outputs, labels, device, max_steps=1000, **kwargs):
-    """Apply Platt scaling calibrator."""
+    """Apply Platt scaling calibrator. (Identical to PhysioNet version)"""
     n_fractions, n_samples, n_classes = outputs.shape
     transformed_outputs = np.zeros_like(outputs)
 
@@ -470,7 +292,7 @@ def apply_platt_calibrator(outputs, labels, device, max_steps=1000, **kwargs):
 
 
 def apply_temperature_calibrator(outputs, labels, device, max_steps=1000, **kwargs):
-    """Apply temperature scaling calibrator."""
+    """Apply temperature scaling calibrator. (Identical to PhysioNet version)"""
     n_fractions, n_samples, n_classes = outputs.shape
     transformed_outputs = np.zeros_like(outputs)
 
@@ -497,25 +319,25 @@ def apply_temperature_calibrator(outputs, labels, device, max_steps=1000, **kwar
 
 
 def apply_logits_sharp_transform(outputs, device, num_epochs=1000, **kwargs):
-    """Apply LogitsSharp transform."""
+    """Apply LogitsSharp transform. (Identical to PhysioNet version)"""
     print("⚠️  LogitsSharp transform not yet implemented for tabular data")
     return outputs
 
 
 def apply_expectation_prob_transform(outputs, device):
-    """Apply expectation probability transform."""
+    """Apply expectation probability transform. (Identical to PhysioNet version)"""
     print("⚠️  Expectation prob transform not implemented yet")
     return outputs
 
 
 def apply_expectation_onehot_transform(outputs, device):
-    """Apply expectation one-hot transform."""
+    """Apply expectation one-hot transform. (Identical to PhysioNet version)"""
     print("⚠️  Expectation one-hot transform not implemented yet")
     return outputs
 
 
 def apply_optimized_lambda_transform(outputs, device, **kwargs):
-    """Stub - apply optimized lambda transform."""
+    """Stub - apply optimized lambda transform. (Identical to PhysioNet version)"""
     print("⚠️  Optimized lambda transform not implemented yet")
     return outputs
 
@@ -525,12 +347,12 @@ def apply_archmod_transform(outputs, device, **kwargs):
     return outputs  # No transformation - custom missing value handling applied during data generation
 
 
-def process_physionet_dataset(methods=None, device="cuda", save_dir="./results", n_runs=3,
-                            n_samples=1000, n_fractions=10):
-    """Process PhysioNet dataset and generate KL benchmarks."""
+def process_ctg_dataset(methods=None, device="cuda", save_dir="./results", n_runs=3,
+                       n_samples=1000, n_fractions=10):
+    """Process CTG dataset and generate KL benchmarks. (Adapted from PhysioNet pattern)"""
 
     if methods is None:
-        methods = ['baseline', 'mcal', 'mcal_ce', 'mcal_ce_uncond', 'platt', 'temperature', 'logits_sharp', 'retrain', 'replace', 'archmod']
+        methods = ['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp', 'retrain', 'replace', 'archmod']
 
     device = torch.device(device)
 
@@ -539,7 +361,7 @@ def process_physionet_dataset(methods=None, device="cuda", save_dir="./results",
     os.makedirs(os.path.join(save_dir, "json"), exist_ok=True)
 
     print("="*60)
-    print("PhysioNet Tabular KL Divergence Benchmark")
+    print("CTG Tabular KL Divergence Benchmark")
     print("="*60)
     print(f"Methods: {methods}")
     print(f"Runs: {n_runs}")
@@ -559,8 +381,8 @@ def process_physionet_dataset(methods=None, device="cuda", save_dir="./results",
         method_predictions = {}
 
         # Standard methods use vanilla model with mean imputation
-        if any(method in ['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp','mcal_ce_uncond'] for method in methods):
-            predictions, labels = load_physionet_data(
+        if any(method in ['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp'] for method in methods):
+            predictions, labels = load_ctg_data(
                 model_type="vanilla",  # Clean, simple vanilla model
                 fill_value="mean",     # Mean imputation for missing values
                 n_samples=n_samples,
@@ -569,13 +391,13 @@ def process_physionet_dataset(methods=None, device="cuda", save_dir="./results",
             print(f"Loaded vanilla data - Predictions: {predictions.shape}, Labels: {labels.shape}")
 
             # Store for all standard methods
-            for method in ['baseline', 'mcal', 'mcal_ce','mcal_ce_uncond' ,'platt', 'temperature', 'logits_sharp']:
+            for method in ['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp']:
                 if method in methods:
                     method_predictions[method] = predictions
 
         # Retrain method uses retrained model
         if 'retrain' in methods:
-            retrain_predictions, retrain_labels = load_physionet_data(
+            retrain_predictions, retrain_labels = load_ctg_data(
                 model_type="retrained",  # Uses 50% binomial missingness training
                 fill_value="mean",       # Mean imputation for missing values
                 n_samples=n_samples,
@@ -588,7 +410,7 @@ def process_physionet_dataset(methods=None, device="cuda", save_dir="./results",
 
         # Replace method uses vanilla model with zero-fill
         if 'replace' in methods:
-            replace_predictions, replace_labels = load_physionet_data(
+            replace_predictions, replace_labels = load_ctg_data(
                 model_type="vanilla",    # Same model as standard methods
                 fill_value="zero",       # BUT zero-fill instead of mean
                 n_samples=n_samples,
@@ -602,7 +424,7 @@ def process_physionet_dataset(methods=None, device="cuda", save_dir="./results",
 
         # ArchMod method uses vanilla model with -10 fill and custom missing parameter
         if 'archmod' in methods:
-            archmod_predictions, archmod_labels = load_physionet_data(
+            archmod_predictions, archmod_labels = load_ctg_data(
                 model_type="vanilla",    # Same model architecture
                 fill_value="-10",        # Fill missing with -10
                 n_samples=n_samples,
@@ -628,14 +450,14 @@ def process_physionet_dataset(methods=None, device="cuda", save_dir="./results",
             else:
                 # Configure method-specific parameters
                 method_kwargs = {}
-                if method in ['mcal', 'mcal_ce','mcal_ce_uncond' 'platt', 'temperature']:
+                if method in ['mcal', 'mcal_ce', 'platt', 'temperature']:
                     method_kwargs['max_steps'] = 1000
                 if method == 'mcal':
                     method_kwargs['kappa'] = 10.0
-                elif method in ['mcal_ce','mcal_ce_uncond']:
+                elif method == 'mcal_ce':
                     method_kwargs['max_steps'] = 5000
                     method_kwargs['head_type'] = 'linear'
-                    method_kwargs['experiment_id'] = f'physionet_run_{run}'
+                    method_kwargs['experiment_id'] = f'ctg_run_{run}'
                 elif method == 'logits_sharp':
                     method_kwargs['num_epochs'] = 1000
 
@@ -658,31 +480,12 @@ def process_physionet_dataset(methods=None, device="cuda", save_dir="./results",
     print(f"{'='*60}")
 
     aggregated_results = aggregate_results(all_results)
-    json_path, table_path, plot_path = save_results(aggregated_results, save_dir, "physionet", n_runs)
-
-    # Also save to the expected location for plotting notebook
-    import shutil
-    expected_path = f"{save_dir}/physionet_results.json"
-    if json_path != expected_path:
-        shutil.copy2(json_path, expected_path)
-        print(f"Results also saved to: {expected_path}")
+    json_path, table_path, plot_path = save_results(aggregated_results, save_dir, "ctg", n_runs)
 
     # Print summary table
     print("\nFinal Results Summary:")
     table = build_kl_comparison_table(aggregated_results)
     print(table)
-
-    # Print fractionwise accuracy summary
-    print("\nFractionwise Accuracy Summary:")
-    for method, method_results in aggregated_results.items():
-        if 'fraction_wise_results_transformed' in method_results:
-            fwr = method_results['fraction_wise_results_transformed']
-            if 'mean_accuracy' in fwr and any(acc > 0 for acc in fwr['mean_accuracy']):
-                avg_accuracy = np.mean(fwr['mean_accuracy'])
-                accuracy_std = np.mean(fwr['std_accuracy'])
-                print(f"  {method.upper()}: Average fractionwise accuracy: {avg_accuracy:.4f} ± {accuracy_std:.4f}")
-                if method_results.get('accuracy_transformed_mean', 0) > 0:
-                    print(f"    Overall accuracy: {method_results['accuracy_transformed_mean']:.4f} ± {method_results['accuracy_transformed_std']:.4f}")
 
     print(f"\n{'='*60}")
     print("BENCHMARK COMPLETED")
@@ -697,10 +500,10 @@ def process_physionet_dataset(methods=None, device="cuda", save_dir="./results",
 
 def main():
     """Main function with argument parsing."""
-    parser = argparse.ArgumentParser(description="PhysioNet Tabular KL Divergence Benchmark")
+    parser = argparse.ArgumentParser(description="CTG Tabular KL Divergence Benchmark")
     parser.add_argument("--methods", nargs="+",
-                       choices=['baseline', 'mcal', 'mcal_ce', 'mcal_ce_uncond', 'platt', 'temperature', 'logits_sharp', 'retrain', 'replace', 'archmod'],
-                       default=['baseline', 'mcal_ce', 'mcal_ce_uncond', 'retrain'],
+                       choices=['baseline', 'mcal', 'mcal_ce', 'platt', 'temperature', 'logits_sharp', 'retrain', 'replace', 'archmod'],
+                       default=['baseline', 'mcal_ce', 'retrain'],
                        help="Methods to benchmark")
     parser.add_argument("--device", default="cuda", help="Device to use")
     parser.add_argument("--save_dir", default="./results", help="Directory to save results")
@@ -711,7 +514,7 @@ def main():
     args = parser.parse_args()
 
     # Run benchmark
-    results = process_physionet_dataset(
+    results = process_ctg_dataset(
         methods=args.methods,
         device=args.device,
         save_dir=args.save_dir,

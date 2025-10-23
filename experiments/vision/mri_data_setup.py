@@ -173,7 +173,7 @@ def load_mri_data(model_type = "vanilla",fill_value=0):
     print(f"   All probabilities shape: {all_probs.shape} (k={len(ablation_fractions)}, n={all_probs.shape[1]}, c={all_probs.shape[2]})")
     print(f"   True labels shape: {true_labels.shape}")
     print(f"   Ablation fractions: {ablation_fractions}")
-    pdb.set_trace()
+    # pdb.set_trace()
     return all_probs, true_labels
 
 
