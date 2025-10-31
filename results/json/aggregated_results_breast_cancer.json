@@ -1,0 +1,26 @@
+{
+    "baseline": {
+        "kl_baseline_mean_prob": 0.09263822436332703,
+        "kl_baseline_std_prob": 0.0005461995839577302,
+        "kl_baseline_mean_onehot": 0.0952485849459966,
+        "kl_baseline_std_onehot": 0.0008713410499944208,
+        "fraction_wise_results": {
+            "mean_argmax": [],
+            "std_argmax": [],
+            "mean_prob": [],
+            "std_prob": []
+        }
+    },
+    "temperature": {
+        "kl_transformed_mean_prob": 0.09546092649300893,
+        "kl_transformed_std_prob": 0.0009263209450439855,
+        "kl_transformed_mean_onehot": 0.0952485849459966,
+        "kl_transformed_std_onehot": 0.0008713410499944208,
+        "fraction_wise_results_transformed": {
+            "mean_argmax": [],
+            "std_argmax": [],
+            "mean_prob": [],
+            "std_prob": []
+        }
+    }
+}

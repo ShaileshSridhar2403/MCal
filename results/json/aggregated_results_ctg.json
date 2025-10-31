@@ -1,0 +1,86 @@
+{
+    "mcal_ce": {
+        "kl_transformed_mean_prob": 2.0781803565720718e-05,
+        "kl_transformed_std_prob": 1.2725534375568849e-05,
+        "kl_transformed_mean_onehot": 0.0033458173274993896,
+        "kl_transformed_std_onehot": 0.0007778843548720106,
+        "fraction_wise_results_transformed": {
+            "mean_argmax": [],
+            "std_argmax": [],
+            "mean_prob": [],
+            "std_prob": []
+        }
+    },
+    "baseline": {
+        "kl_baseline_mean_prob": 0.10095508148272832,
+        "kl_baseline_std_prob": 0.004738306870679933,
+        "kl_baseline_mean_onehot": 0.10624030729134877,
+        "kl_baseline_std_onehot": 0.00701842776117909,
+        "fraction_wise_results": {
+            "mean_argmax": [],
+            "std_argmax": [],
+            "mean_prob": [],
+            "std_prob": []
+        }
+    },
+    "replace": {
+        "kl_transformed_mean_prob": 0.040308273086945214,
+        "kl_transformed_std_prob": 0.001081572534457598,
+        "kl_transformed_mean_onehot": 0.07020193586746852,
+        "kl_transformed_std_onehot": 0.00192518116085309,
+        "fraction_wise_results_transformed": {
+            "mean_argmax": [],
+            "std_argmax": [],
+            "mean_prob": [],
+            "std_prob": []
+        }
+    },
+    "retrain": {
+        "kl_transformed_mean_prob": 0.004351327816645305,
+        "kl_transformed_std_prob": 0.0007920403301614987,
+        "kl_transformed_mean_onehot": 0.006606812588870525,
+        "kl_transformed_std_onehot": 0.0014512062162633603,
+        "fraction_wise_results_transformed": {
+            "mean_argmax": [],
+            "std_argmax": [],
+            "mean_prob": [],
+            "std_prob": []
+        }
+    },
+    "platt": {
+        "kl_transformed_mean_prob": 0.09248379617929459,
+        "kl_transformed_std_prob": 0.0048838910396556846,
+        "kl_transformed_mean_onehot": 0.09198277443647385,
+        "kl_transformed_std_onehot": 0.004964078220917192,
+        "fraction_wise_results_transformed": {
+            "mean_argmax": [],
+            "std_argmax": [],
+            "mean_prob": [],
+            "std_prob": []
+        }
+    },
+    "archmod": {
+        "kl_transformed_mean_prob": 0.1273113489151001,
+        "kl_transformed_std_prob": 0.0037916536672805328,
+        "kl_transformed_mean_onehot": 0.28514285882314044,
+        "kl_transformed_std_onehot": 0.005941393573666388,
+        "fraction_wise_results_transformed": {
+            "mean_argmax": [],
+            "std_argmax": [],
+            "mean_prob": [],
+            "std_prob": []
+        }
+    },
+    "temperature": {
+        "kl_transformed_mean_prob": 0.10782355070114136,
+        "kl_transformed_std_prob": 0.00629673306202653,
+        "kl_transformed_mean_onehot": 0.10624030729134877,
+        "kl_transformed_std_onehot": 0.00701842776117909,
+        "fraction_wise_results_transformed": {
+            "mean_argmax": [],
+            "std_argmax": [],
+            "mean_prob": [],
+            "std_prob": []
+        }
+    }
+}
