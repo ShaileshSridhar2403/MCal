@@ -801,7 +801,7 @@ def main():
                        default=['baseline', 'mcal_ce', 'platt', 'temperature', "qlora", "attention_mask", "token_drop"],
                        help="Methods to include in benchmark (baseline, mcal, mcal_ce, platt, temperature, token_drop, attention_mask)")
     parser.add_argument("--runs", type=int, default=3, help="Number of runs")
-    parser.add_argument("--samples", type=int, default=10, help="Samples per run")
+    parser.add_argument("--samples", type=int, default=1000, help="Samples per run")
     parser.add_argument("--fractions", type=int, default=10, help="Number of fractions")
     parser.add_argument("--device", type=str, default="cuda", help="Device (cuda/cpu)")
     parser.add_argument("--save_dir", type=str, default="./results", help="Save directory")

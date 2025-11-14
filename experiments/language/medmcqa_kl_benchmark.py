@@ -675,7 +675,7 @@ def main():
                        help="Directory to save results")
     parser.add_argument("--runs", type=int, default=3,
                        help="Number of runs")
-    parser.add_argument("--samples", type=int, default=10,
+    parser.add_argument("--samples", type=int, default=1000,
                        help="Number of samples per run")
     parser.add_argument("--fractions", type=int, default=10,
                        help="Number of ablation fractions")
