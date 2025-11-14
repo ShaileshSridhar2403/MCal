@@ -734,7 +734,7 @@ def main():
     parser.add_argument("--samples", type=int, default=1000, help="Samples per fraction")
     parser.add_argument("--fractions", type=int, default=16, help="Number of fractions")
     parser.add_argument("--device", type=str, default="cuda", help="Device (cuda/cpu)")
-    parser.add_argument("--save_dir", type=str, default="./results", help="Save directory")
+    parser.add_argument("--save_dir", type=str, default=f"{mcal_root}/experiments/vision/results", help="Save directory")
     parser.add_argument("--patchcutout_data_dir", type=str, default="../../../XAI_Benchmark/dataset_store/model_outputs", 
                        help="Directory containing PatchCutout predictions from XAI_Benchmark")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing results")

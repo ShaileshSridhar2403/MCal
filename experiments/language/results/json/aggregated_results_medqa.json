@@ -1,14 +1,14 @@
 {
-    "baseline": {
-        "kl_baseline_mean_prob": 0.6378382941087087,
-        "kl_baseline_std_prob": 0.0,
-        "kl_baseline_mean_onehot": 1.3972659905751545,
-        "kl_baseline_std_onehot": 0.0,
-        "fraction_wise_results": {
+    "mcal_ce": {
+        "kl_transformed_mean_prob": 6.728165923656586e-06,
+        "kl_transformed_std_prob": 0.0,
+        "kl_transformed_mean_onehot": 2.107618001900846e-06,
+        "kl_transformed_std_onehot": 0.0,
+        "fraction_wise_results_transformed": {
             "mean_argmax": [
-                0.9729232788085938,
-                1.609437346458435,
-                1.609437346458435
+                2.107618001900846e-06,
+                2.107618001900846e-06,
+                2.107618001900846e-06
             ],
             "std_argmax": [
                 0.0,
@@ -16,9 +16,9 @@
                 0.0
             ],
             "mean_prob": [
-                0.41021600365638733,
-                0.6591898202896118,
-                0.844109058380127
+                0.0,
+                1.6295020031975582e-05,
+                3.889477738994174e-06
             ],
             "std_prob": [
                 0.0,
@@ -27,16 +27,16 @@
             ]
         }
     },
-    "token_drop": {
-        "kl_transformed_mean_prob": 0.3230065157016118,
+    "mcal_ce_uncond": {
+        "kl_transformed_mean_prob": 0.15420614928007126,
         "kl_transformed_std_prob": 0.0,
-        "kl_transformed_mean_onehot": 0.9729232788085938,
+        "kl_transformed_mean_onehot": 0.2310473358663406,
         "kl_transformed_std_onehot": 0.0,
         "fraction_wise_results_transformed": {
             "mean_argmax": [
-                0.9729232788085938,
-                0.9729232788085938,
-                0.9729232788085938
+                5.62081481803034e-07,
+                0.1386285275220871,
+                0.5545129179954529
             ],
             "std_argmax": [
                 0.0,
@@ -44,9 +44,9 @@
                 0.0
             ],
             "mean_prob": [
-                0.41021600365638733,
-                0.3943112790584564,
-                0.16449226438999176
+                0.0,
+                0.07829529792070389,
+                0.3843231499195099
             ],
             "std_prob": [
                 0.0,
