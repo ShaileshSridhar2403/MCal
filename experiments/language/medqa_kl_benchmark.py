@@ -488,7 +488,7 @@ def build_kl_comparison_table(aggregated_results, include_methods=None):
     return table
 
 def load_medqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
-                   model_path="~/shailesh/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
+                   model_path="saved_models/language/Meta-Llama-3-8B-Instruct/",
                    use_real_data=True, balanced=True):
     """Load MedQA data following vision benchmark pattern."""
 
@@ -535,7 +535,7 @@ def load_medqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
 
         elif model_type == "qlora":
             # Use qlora strategy
-            model = MCal_LLaMAModel("~/foo/MCal/saved_models/medqa/medqa_p0.5/merged_model")
+            model = MCal_LLaMAModel("saved_models/medqa/medqa_p0.5/merged_model")
             predictions = generate_fractionwise_predictions(
                 model=model,
                 data=medqa_questions,
@@ -589,7 +589,7 @@ def load_medqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
 
 def process_medqa_dataset(methods=None, device="cuda", save_dir="./results", n_runs=3,
                          n_samples=10, n_fractions=10,
-                         model_path="~/shailesh/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
+                         model_path="saved_models/language/Meta-Llama-3-8B-Instruct/",
                          use_real_data=True, balanced=True):
     """Process MedQA dataset and generate KL benchmarks - IDENTICAL STRUCTURE to vision."""
 
@@ -806,7 +806,7 @@ def main():
     parser.add_argument("--device", type=str, default="cuda", help="Device (cuda/cpu)")
     parser.add_argument("--save_dir", type=str, default="./results", help="Save directory")
     parser.add_argument("--model_path", type=str,
-                       default="~/shailesh/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
+                       default="saved_models/language/Meta-Llama-3-8B-Instruct/",
                        help="Path to LLaMA model")
     parser.add_argument("--use_real_data", action="store_true", default=True,
                        help="Use real MedQA dataset (default: True)")
