@@ -103,7 +103,8 @@ class MRICleanDataset(Dataset):
             transforms.ToTensor(),
         ])
         self.dataset = datasets.ImageFolder(self.data_dir, transform=self.transforms)
-        self.n_samples = n_samples if n_samples is not None else len(self.dataset)
+        # Cap n_samples at actual dataset size
+        self.n_samples = min(n_samples, len(self.dataset)) if n_samples is not None else len(self.dataset)
 
     def __len__(self):
         return self.n_samples
@@ -292,6 +293,73 @@ def load_mri_fractionwise(split='test', n_fractions=16, n_samples=None):
             ablated_images[i] = torch.stack([augmenter(img) for img in clean_images])
 
     return ablated_images, labels
+
+
+def load_mri_clean_and_ablated(split='test', p_ablate=0.5, n_samples=None, patch_size=16, fill_val=0, seed=None, shuffle=False):
+    """
+    Load clean MRI images and their ablated versions with probabilistic patch masking.
+
+    Ensures clean and ablated images are perfectly aligned (same samples).
+
+    Args:
+        split: 'train' or 'test'
+        p_ablate: Probability of masking each patch (default 0.5)
+        n_samples: Number of samples to load
+        patch_size: Size of patches to mask (default 16)
+        fill_val: Value to fill masked patches with
+        seed: Random seed for reproducibility
+        shuffle: Whether to shuffle the data before returning (default False)
+
+    Returns:
+        images_clean: (n_samples, 3, 224, 224) tensor of clean images
+        images_ablated: (n_samples, 3, 224, 224) tensor of ablated images
+        labels: (n_samples,) tensor of labels
+    """
+    # Load clean dataset
+    dataset = load_mri_clean(split, n_samples)
+
+    # Convert dataset to tensors
+    images_list = []
+    labels_list = []
+    for i in range(len(dataset)):
+        img, label = dataset[i]
+        images_list.append(img)
+        labels_list.append(label)
+
+    images_clean = torch.stack(images_list)
+    labels = torch.tensor(labels_list)
+
+    # Shuffle if requested
+    if shuffle:
+        if seed is not None:
+            torch.manual_seed(seed)
+        perm = torch.randperm(len(images_clean))
+        images_clean = images_clean[perm]
+        labels = labels[perm]
+
+    # Create ablated versions with probabilistic patch masking
+    images_ablated = images_clean.clone()
+    C, H, W = images_clean.shape[1:]
+    n_patches_h, n_patches_w = H // patch_size, W // patch_size
+
+    if seed is not None:
+        torch.manual_seed(seed)
+        random.seed(seed)
+
+    for i in range(len(images_ablated)):
+        # Generate random mask for patches
+        patch_mask = torch.rand(n_patches_h, n_patches_w) < p_ablate
+        patch_mask = patch_mask.unsqueeze(0).repeat(C, 1, 1)
+        # Upsample to full image size
+        patch_mask = F.interpolate(
+            patch_mask.unsqueeze(0).float(),
+            size=(H, W),
+            mode='nearest'
+        ).squeeze(0).bool()
+        # Apply mask
+        images_ablated[i, patch_mask] = fill_val
+
+    return images_clean, images_ablated, labels
 
 
 # =============================================================================
@@ -564,6 +632,55 @@ def load_medqa_fractionwise(split='test', n_fractions=16, n_samples=None):
     return modified_datasets
 
 
+def load_medqa_clean_and_ablated(split='test', p_ablate=0.5, n_samples=None, seed=None, shuffle=False):
+    """
+    Load clean MedQA and ablated versions with probabilistic token masking.
+
+    Ensures clean and ablated datasets are perfectly aligned (same samples).
+
+    Args:
+        split: 'test' or 'train'
+        p_ablate: Probability of masking each token (default 0.5)
+        n_samples: Number of samples to load
+        seed: Random seed for reproducibility
+        shuffle: Whether to shuffle the data before returning (default False)
+
+    Returns:
+        dataset_clean: HuggingFace dataset with clean questions
+        dataset_ablated: HuggingFace dataset with ablated questions (same order)
+    """
+    # Load clean dataset
+    dataset_clean = load_medqa_clean(split, n_samples)
+
+    # Shuffle if requested
+    if shuffle:
+        if seed is not None:
+            dataset_clean = dataset_clean.shuffle(seed=seed)
+        else:
+            dataset_clean = dataset_clean.shuffle()
+
+    # Create ablated version with probabilistic word masking
+    if seed is not None:
+        random.seed(seed)
+
+    def ablate_question(example, idx):
+        words = example['question'].split()
+        n_keep = int(len(words) * (1 - p_ablate))
+        if n_keep > 0 and len(words) > 0:
+            # Use idx as part of seed for reproducibility
+            rng = random.Random(seed + idx if seed is not None else None)
+            keep_indices = set(rng.sample(range(len(words)), n_keep))
+            ablated_words = [words[i] if i in keep_indices else '' for i in range(len(words))]
+            ablated_q = ' '.join([w for w in ablated_words if w])
+        else:
+            ablated_q = ''
+        return {'question': ablated_q}
+
+    dataset_ablated = dataset_clean.map(ablate_question, with_indices=True)
+
+    return dataset_clean, dataset_ablated
+
+
 # =============================================================================
 # MEDMCQA DATASET
 # =============================================================================
@@ -637,6 +754,200 @@ def load_medmcqa_fractionwise(split='test', n_fractions=16, n_samples=None):
     ]
 
     return modified_datasets
+
+
+# =============================================================================
+# PHYSIONET DATASET
+# =============================================================================
+
+def _load_physionet_from_missingness_files(missingness_dir):
+    """
+    Load PhysioNet data from missingness level files (0-30% missingness range).
+    Internal helper function - loads base data source.
+    """
+    import glob
+
+    # List all relevant CSV files
+    file_pattern = str(Path(missingness_dir) / "missingness_0*.csv.gz")
+    files = glob.glob(file_pattern)
+
+    # Filter files for 0-30% missingness
+    files = [f for f in files if int(Path(f).stem.split('_')[1][:3]) <= 30]
+
+    if not files:
+        raise ValueError(f"No PhysioNet files found in {missingness_dir} for 0-30% missingness range")
+
+    # Load and concatenate dataframes
+    dfs = []
+    for file in files:
+        df = pd.read_csv(file, compression='gzip', index_col=0)
+        dfs.append(df)
+
+    combined_df = pd.concat(dfs, axis=0)
+    return combined_df
+
+
+def _balance_physionet_dataset(df, target_column='In-hospital_death'):
+    """
+    Balance PhysioNet dataset by undersampling majority class.
+    Internal helper function.
+    """
+    from sklearn.utils import resample
+
+    # Separate majority and minority classes
+    df_majority = df[df[target_column] == 0]  # Survival (majority)
+    df_minority = df[df[target_column] == 1]  # Death (minority)
+
+    # Undersample majority class to match minority class
+    df_majority_undersampled = resample(
+        df_majority,
+        replace=False,
+        n_samples=len(df_minority),
+        random_state=42
+    )
+
+    # Combine and shuffle
+    df_balanced = pd.concat([df_majority_undersampled, df_minority])
+    df_balanced = df_balanced.sample(frac=1, random_state=42).reset_index(drop=True)
+
+    return df_balanced
+
+
+def load_physionet_clean(split='test', n_samples=None):
+    """
+    Load clean PhysioNet dataset without any missingness.
+
+    Args:
+        split: 'train' or 'test' - splits data 80/20
+        n_samples: Number of samples to load from the split
+
+    Returns:
+        X: Features as numpy array (n_samples, n_features)
+        y: Labels as numpy array (n_samples,)
+    """
+    # Load the pre-balanced CSV file
+    csv_file = PROJECT_ROOT / 'experiments' / 'tabular' / 'balanced_physionet_dataset_0-30.csv'
+
+    if not csv_file.exists():
+        raise FileNotFoundError(f"PhysioNet data file not found at {csv_file}")
+
+    df_balanced = pd.read_csv(csv_file)
+
+    # Split train/test (80/20)
+    from sklearn.model_selection import train_test_split
+    train_df, test_df = train_test_split(df_balanced, test_size=0.2, random_state=42, stratify=df_balanced['In-hospital_death'])
+
+    df_split = train_df if split == 'train' else test_df
+
+    # Sample if needed
+    if n_samples is not None and n_samples < len(df_split):
+        df_split = df_split.sample(n=n_samples, random_state=42).reset_index(drop=True)
+
+    # Split into features and labels
+    X = df_split.drop('In-hospital_death', axis=1).values
+    y = df_split['In-hospital_death'].values
+
+    return X, y
+
+
+def load_physionet_ablated_prob(split='test', p_ablate=0.5, n_samples=None):
+    """
+    Load PhysioNet with probabilistic feature missingness (binomial).
+
+    Args:
+        split: 'train' or 'test'
+        p_ablate: Probability of ablating each feature (0.0 to 1.0)
+        n_samples: Number of samples to load
+
+    Returns:
+        X: Features with probabilistic missingness (n_samples, n_features)
+        y: Labels as numpy array (n_samples,)
+    """
+    X_clean, y = load_physionet_clean(split, n_samples)
+
+    # Apply probabilistic missingness
+    X_ablated = X_clean.copy()
+    n_samples_actual, n_features = X_ablated.shape
+
+    for i in range(n_samples_actual):
+        # Each feature has p_ablate probability of being masked (binomial)
+        mask = np.random.random(n_features) < p_ablate
+        X_ablated[i, mask] = 0
+
+    return X_ablated, y
+
+
+def load_physionet_ablated_exact(split='test', fraction_ablate=0.5, n_samples=None):
+    """
+    Load PhysioNet with exact fraction of features ablated.
+
+    Args:
+        split: 'train' or 'test'
+        fraction_ablate: Exact fraction of features to ablate (0.0 to 1.0)
+        n_samples: Number of samples to load
+
+    Returns:
+        X: Features with exact missingness (n_samples, n_features)
+        y: Labels as numpy array (n_samples,)
+    """
+    X_clean, y = load_physionet_clean(split, n_samples)
+
+    # Apply exact missingness
+    X_ablated = X_clean.copy()
+    n_samples_actual, n_features = X_ablated.shape
+    n_to_ablate = int(n_features * fraction_ablate)
+
+    for i in range(n_samples_actual):
+        if n_to_ablate > 0:
+            # Randomly select exact number of features to mask
+            ablate_indices = np.random.choice(n_features, n_to_ablate, replace=False)
+            X_ablated[i, ablate_indices] = 0
+
+    return X_ablated, y
+
+
+def load_physionet_clean_and_ablated(split='test', p_ablate=0.5, n_samples=None, seed=None, shuffle=False):
+    """
+    Load clean PhysioNet data and ablated versions with probabilistic feature masking.
+
+    Ensures clean and ablated data are perfectly aligned (same samples).
+
+    Args:
+        split: 'train' or 'test'
+        p_ablate: Probability of masking each feature (default 0.5)
+        n_samples: Number of samples to load
+        seed: Random seed for reproducibility
+        shuffle: Whether to shuffle the data before returning (default False)
+
+    Returns:
+        X_clean: Clean features (n_samples, n_features)
+        X_ablated: Ablated features (n_samples, n_features)
+        y: Labels as numpy array (n_samples,)
+    """
+    # Load clean data
+    X_clean, y = load_physionet_clean(split, n_samples)
+
+    # Shuffle if requested
+    if shuffle:
+        if seed is not None:
+            np.random.seed(seed)
+        perm = np.random.permutation(len(X_clean))
+        X_clean = X_clean[perm]
+        y = y[perm]
+
+    # Create ablated version with probabilistic feature masking
+    X_ablated = X_clean.copy()
+    n_samples_actual, n_features = X_ablated.shape
+
+    if seed is not None:
+        np.random.seed(seed)
+
+    for i in range(n_samples_actual):
+        # Probabilistic masking - each feature independently masked with prob p_ablate
+        mask = np.random.random(n_features) < p_ablate
+        X_ablated[i, mask] = 0
+
+    return X_clean, X_ablated, y
 
 
 # =============================================================================
