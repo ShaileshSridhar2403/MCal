@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "/home/shai2403/XAIbench/MCal/experiments/vision/run_vision_benchmarks.py", line 18, in <module>
-    from evaluation.benchmarks import CalibrationBenchmark, process_datasets
-  File "/home/shai2403/XAIbench/MCal/src/evaluation/__init__.py", line 3, in <module>
-    from .benchmarks import CalibrationBenchmark, process_datasets
-  File "/home/shai2403/XAIbench/MCal/src/evaluation/benchmarks.py", line 11, in <module>
-    from ..calibrators import MCal, PlattCalibrator, TemperatureScaling
-ImportError: attempted relative import beyond top-level package
