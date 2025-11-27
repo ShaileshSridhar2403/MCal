@@ -1,0 +1,45 @@
+{
+  "probabilities": {
+    "mean_ablated_probabilities": [
+      0.7768795490264893,
+      0.22312049567699432
+    ],
+    "mean_argmaxed_ablated_probabilities": [
+      0.7720000147819519,
+      0.22800001502037048
+    ],
+    "mean_calibrated_probabilities": [
+      0.47621846199035645,
+      0.5237816572189331
+    ],
+    "mean_argmax_probabilities": [
+      0.7440000176429749,
+      0.25600001215934753
+    ],
+    "uniform_distribution": [
+      0.5,
+      0.5
+    ]
+  },
+  "kl_divergences": {
+    "mean_probs_vs_uniform": 0.001131674274802208,
+    "mean_argmax_vs_uniform": 0.12431587278842926
+  },
+  "accuracy": 0.7080000042915344,
+  "learned_parameters": {
+    "weight": [
+      [
+        1.3884323835372925,
+        0.18981951475143433
+      ],
+      [
+        -0.7729448676109314,
+        0.4501647651195526
+      ]
+    ],
+    "bias": [
+      -0.9858701229095459,
+      -0.024198925122618675
+    ]
+  }
+}

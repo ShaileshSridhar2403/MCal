@@ -20,7 +20,7 @@ def kl_divergence(p: torch.Tensor, q: torch.Tensor, eps: float = 1e-10) -> torch
         q = q.view(1, -1)
 
     kl_div = (p * (torch.log(p + eps) - torch.log(q + eps))).sum(dim=1)
-    return kl_div if is_batched else kl_div.item()
+    return kl_div if is_batched else kl_div.view(1)
 
 
 def missingness_bias(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
