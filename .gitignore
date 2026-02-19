@@ -218,3 +218,8 @@ results/cache/
 experiments/results/
 experiments/language/results/
 
+
+# Large data directories
+dataset_v2/
+experiments/vision/data/
+experiments/data/*.zip

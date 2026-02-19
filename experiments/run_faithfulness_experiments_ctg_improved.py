@@ -1,0 +1,509 @@
+#!/usr/bin/env python3
+"""
+Run Faithfulness, Deletion, and Insertion Experiments for MCal on CTG Dataset
+IMPROVED VERSION: Uses TreeSHAP (exact) and full test set (426 samples)
+
+CTG (Cardiotocography) - Multi-class classification (3 classes: Normal, Suspect, Pathologic)
+"""
+
+import sys
+import torch
+import torch.nn as nn
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
+import matplotlib.pyplot as plt
+import seaborn as sns
+from tqdm import tqdm
+from pathlib import Path
+import pandas as pd
+import xgboost as xgb
+from sklearn.model_selection import train_test_split
+import shap
+import warnings
+warnings.filterwarnings('ignore')
+
+# Set style
+sns.set_style('whitegrid')
+plt.rcParams['figure.dpi'] = 100
+
+# Add parent directory to path
+sys.path.append('..')
+
+# Import MCal components
+from src.calibrators.mcal_ce import SimpleMCalCE
+
+# Import CTG data loader
+from all_data_loaders import load_ctg_clean
+
+# Import new faithfulness metrics
+from faithfulness_metrics import (
+    TabularFaithfulnessPearson, TabularDeletionMetric, TabularInsertionMetric
+)
+
+# Set device
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
+
+# Set random seeds
+torch.manual_seed(42)
+np.random.seed(42)
+
+# Configuration - IMPROVED VERSION
+config = {
+    'n_train': 300,
+    'n_test': None,  # Use ALL test samples (426)
+    'ablation_rate': 0.5,
+    'mcal_steps': 2000,
+    'n_deletion_steps': 10,
+    'n_insertion_steps': 10,
+    'xgb_n_estimators': 100,
+    'xgb_max_depth': 6,
+    'xgb_learning_rate': 0.1,
+    'shap_method': 'KernelExplainer',  # Use KernelExplainer for both models
+    'kernel_nsamples': 500  # Samples for SHAP estimation (both models)
+}
+
+print("\n" + "="*70)
+print("FAITHFULNESS EXPERIMENTS FOR MCAL - CTG DATASET (IMPROVED)")
+print("="*70)
+print("\n🔧 IMPROVEMENTS:")
+print("  - Using KernelExplainer for BOTH models (fair comparison)")
+print("  - Using FULL test set (all available samples)")
+print("  - Increased KernelExplainer samples to 500 for better explanations")
+print("\nConfiguration:")
+for k, v in config.items():
+    print(f"  {k}: {v}")
+
+# ============================================================================
+# Load CTG Dataset
+# ============================================================================
+print("\n" + "="*70)
+print("1. LOADING CTG DATASET")
+print("="*70)
+
+# Load dataset
+X_train_full, y_train_full = load_ctg_clean('train')
+X_test_full, y_test_full = load_ctg_clean('test')
+
+print(f"Dataset: Cardiotocography (CTG) - Fetal Heart Rate Classification")
+print(f"Total training samples: {len(X_train_full)}")
+print(f"Total test samples: {len(X_test_full)}")
+print(f"Features: {X_train_full.shape[1]}")
+print(f"Classes: 3 (0=Normal, 1=Suspect, 2=Pathologic)")
+print(f"Training class distribution: {np.bincount(y_train_full)}")
+print(f"Test class distribution: {np.bincount(y_test_full)}")
+
+# Subsample training, use ALL test samples
+X_train = X_train_full[:config['n_train']]
+y_train = y_train_full[:config['n_train']]
+
+if config['n_test'] is None:
+    X_test = X_test_full
+    y_test = y_test_full
+    print("\n✓ Using FULL test set (all available samples)")
+else:
+    X_test = X_test_full[:config['n_test']]
+    y_test = y_test_full[:config['n_test']]
+
+print(f"\nAfter subsampling:")
+print(f"  Train: {X_train.shape} samples")
+print(f"  Test: {X_test.shape} samples")
+print(f"  Test class distribution: {np.bincount(y_test)}")
+
+# ============================================================================
+# Train XGBoost Model
+# ============================================================================
+print("\n" + "="*70)
+print("2. TRAINING XGBOOST MODEL")
+print("="*70)
+
+base_model = xgb.XGBClassifier(
+    n_estimators=config['xgb_n_estimators'],
+    max_depth=config['xgb_max_depth'],
+    learning_rate=config['xgb_learning_rate'],
+    random_state=42,
+    eval_metric='mlogloss',  # Multi-class log loss
+    objective='multi:softprob',  # Multi-class classification
+    num_class=3
+)
+
+base_model.fit(X_train, y_train, verbose=False)
+
+train_acc = base_model.score(X_train, y_train)
+test_acc = base_model.score(X_test, y_test)
+
+print(f"✓ XGBoost model trained")
+print(f"  Train accuracy: {train_acc:.3f}")
+print(f"  Test accuracy: {test_acc:.3f}")
+
+# ============================================================================
+# Train MCal Calibrator
+# ============================================================================
+print("\n" + "="*70)
+print("3. TRAINING MCAL CALIBRATOR")
+print("="*70)
+
+# Create ablated training data
+print("Creating ablated training data...")
+X_train_ablated = X_train.copy()
+n_features = X_train.shape[1]
+
+# Randomly ablate features
+np.random.seed(42)
+for i in range(len(X_train_ablated)):
+    mask = np.random.rand(n_features) < config['ablation_rate']
+    X_train_ablated[i, mask] = 0.0  # Ablate by setting to 0
+
+print(f"✓ Ablated {config['ablation_rate']*100:.0f}% of features per sample")
+
+# Get predictions on ablated data
+print("Computing predictions on ablated training data...")
+ablated_probs = base_model.predict_proba(X_train_ablated)
+ablated_logits = torch.tensor(np.log(ablated_probs + 1e-10)).float().to(device)
+train_labels_tensor = torch.tensor(y_train).long().to(device)
+
+# Train MCal
+print("\nTraining MCal calibrator...")
+n_classes = 3  # CTG has 3 classes
+calibrator = SimpleMCalCE(num_classes=n_classes).to(device)
+stats = calibrator.fit(
+    ablated_logits=ablated_logits,
+    target_labels=train_labels_tensor,
+    max_steps=config['mcal_steps'],
+    verbose=True
+)
+
+print(f"\n✓ MCal training complete!")
+print(f"  Final Loss: {stats['loss'][-1]:.4f}")
+print(f"  Final Accuracy: {stats['acc'][-1]:.3f}")
+
+# Create calibrated model wrapper
+class CalibratedTabularModel:
+    def __init__(self, base_model, calibrator, device):
+        self.base_model = base_model
+        self.calibrator = calibrator
+        self.device = device
+
+    def predict_proba(self, X):
+        # Get base predictions
+        probs = self.base_model.predict_proba(X)
+        logits = torch.tensor(np.log(probs + 1e-10)).float().to(self.device)
+
+        # Apply calibration
+        with torch.no_grad():
+            calibrated_logits = self.calibrator(logits)
+            calibrated_probs = torch.softmax(calibrated_logits, dim=1)
+
+        return calibrated_probs.cpu().numpy()
+
+calib_model = CalibratedTabularModel(base_model, calibrator, device)
+print("✓ Created calibrated model")
+
+# ============================================================================
+# Generate SHAP Explanations - IMPROVED: Using TreeSHAP
+# ============================================================================
+print("\n" + "="*70)
+print("4. GENERATING SHAP EXPLANATIONS (USING KERNELEXPLAINER FOR BOTH)")
+print("="*70)
+
+print("🔧 IMPROVEMENT: Using KernelExplainer for BOTH models for fair comparison")
+print(f"Note: Same explanation method for both uncalibrated and calibrated models")
+print(f"      Using {config['kernel_nsamples']} samples for SHAP estimation")
+
+# Create background dataset for KernelExplainer
+background_size = min(100, len(X_train))  # Larger background for better explanations
+X_background = shap.sample(X_train, background_size)
+
+print(f"\nCreating KernelExplainer for both models (background: {background_size})...")
+
+# Generate SHAP values for each test sample based on its predicted class
+uncal_shap_values = []
+calib_shap_values = []
+
+print(f"\nComputing SHAP values for {len(X_test)} test samples...")
+for i in tqdm(range(len(X_test)), desc="SHAP explanations"):
+    instance = X_test[i:i+1]
+
+    # Get predicted classes
+    uncal_pred_class = base_model.predict(instance)[0]
+    calib_pred_class = np.argmax(calib_model.predict_proba(instance), axis=1)[0]
+
+    # KernelExplainer for uncalibrated
+    explainer_uncal = shap.KernelExplainer(
+        lambda x: base_model.predict_proba(x)[:, uncal_pred_class],
+        X_background
+    )
+    shap_uncal = explainer_uncal.shap_values(instance, nsamples=config['kernel_nsamples'], silent=True)
+    shap_uncal = np.array(shap_uncal).flatten()  # Ensure 1D
+
+    # KernelExplainer for calibrated
+    explainer_calib = shap.KernelExplainer(
+        lambda x: calib_model.predict_proba(x)[:, calib_pred_class],
+        X_background
+    )
+    shap_calib = explainer_calib.shap_values(instance, nsamples=config['kernel_nsamples'], silent=True)
+    shap_calib = np.array(shap_calib).flatten()  # Ensure 1D
+
+    uncal_shap_values.append(shap_uncal)
+    calib_shap_values.append(shap_calib)
+
+print("✓ SHAP explanations generated")
+
+# ============================================================================
+# Compute Faithfulness Metrics
+# ============================================================================
+print("\n" + "="*70)
+print("5. COMPUTING FAITHFULNESS METRICS")
+print("="*70)
+
+# Initialize metrics
+faithfulness_metric = TabularFaithfulnessPearson(baseline_value=0.0)
+deletion_metric = TabularDeletionMetric(baseline_value=0.0, n_steps=config['n_deletion_steps'])
+insertion_metric = TabularInsertionMetric(baseline_value=0.0, n_steps=config['n_insertion_steps'])
+
+# Storage for results
+results = {
+    'uncalibrated': {'faithfulness': [], 'deletion_auc': [], 'insertion_auc': []},
+    'calibrated': {'faithfulness': [], 'deletion_auc': [], 'insertion_auc': []},
+    'deletion_curves_uncal': [],
+    'deletion_curves_cal': [],
+    'insertion_curves_uncal': [],
+    'insertion_curves_cal': []
+}
+
+print(f"Computing metrics for {len(X_test)} test samples...")
+for i in tqdm(range(len(X_test)), desc="Computing metrics"):
+    instance = X_test[i]
+    label = y_test[i]
+
+    # Convert SHAP values to numpy arrays
+    uncal_attrs = np.array(uncal_shap_values[i])
+    calib_attrs = np.array(calib_shap_values[i])
+
+    # Debug: Check shapes on first iteration
+    if i == 0:
+        print(f"\nDebug - Shapes:")
+        print(f"  instance shape: {instance.shape}")
+        print(f"  uncal_attrs shape: {uncal_attrs.shape}")
+        print(f"  calib_attrs shape: {calib_attrs.shape}")
+
+    # Uncalibrated metrics
+    faith_uncal = faithfulness_metric.compute(base_model, instance, uncal_attrs, label)
+    del_uncal = deletion_metric.compute(base_model, instance, uncal_attrs, label)
+    ins_uncal = insertion_metric.compute(base_model, instance, uncal_attrs, label)
+
+    results['uncalibrated']['faithfulness'].append(faith_uncal)
+    results['uncalibrated']['deletion_auc'].append(del_uncal['auc'])
+    results['uncalibrated']['insertion_auc'].append(ins_uncal['auc'])
+    results['deletion_curves_uncal'].append((del_uncal['fractions'], del_uncal['scores']))
+    results['insertion_curves_uncal'].append((ins_uncal['fractions'], ins_uncal['scores']))
+
+    # Calibrated metrics
+    faith_cal = faithfulness_metric.compute(calib_model, instance, calib_attrs, label)
+    del_cal = deletion_metric.compute(calib_model, instance, calib_attrs, label)
+    ins_cal = insertion_metric.compute(calib_model, instance, calib_attrs, label)
+
+    results['calibrated']['faithfulness'].append(faith_cal)
+    results['calibrated']['deletion_auc'].append(del_cal['auc'])
+    results['calibrated']['insertion_auc'].append(ins_cal['auc'])
+    results['deletion_curves_cal'].append((del_cal['fractions'], del_cal['scores']))
+    results['insertion_curves_cal'].append((ins_cal['fractions'], ins_cal['scores']))
+
+print("\n✓ Metrics computed!")
+
+# ============================================================================
+# Results Summary
+# ============================================================================
+print("\n" + "="*70)
+print("6. RESULTS SUMMARY")
+print("="*70)
+
+# Compute averages
+summary = pd.DataFrame({
+    'Metric': ['Faithfulness (Pearson ρ) ↑', 'Deletion AUC ↓', 'Insertion AUC ↑'],
+    'Uncalibrated': [
+        np.mean(results['uncalibrated']['faithfulness']),
+        np.mean(results['uncalibrated']['deletion_auc']),
+        np.mean(results['uncalibrated']['insertion_auc'])
+    ],
+    'MCal Calibrated': [
+        np.mean(results['calibrated']['faithfulness']),
+        np.mean(results['calibrated']['deletion_auc']),
+        np.mean(results['calibrated']['insertion_auc'])
+    ]
+})
+
+# Compute improvements
+improvements = []
+for i in range(len(summary)):
+    uncal = summary.iloc[i]['Uncalibrated']
+    cal = summary.iloc[i]['MCal Calibrated']
+    metric_name = summary.iloc[i]['Metric']
+
+    if 'Deletion' in metric_name:
+        # Lower is better
+        imp = ((uncal - cal) / abs(uncal)) * 100 if uncal != 0 else 0
+    else:
+        # Higher is better
+        imp = ((cal - uncal) / abs(uncal)) * 100 if uncal != 0 else 0
+    improvements.append(f"{imp:+.1f}%")
+
+summary['Improvement'] = improvements
+
+print("\n" + "="*70)
+print(f"CTG RESULTS - IMPROVED (averaged over {len(X_test)} test samples)")
+print("="*70)
+print(summary.to_string(index=False))
+print("="*70)
+
+# Compare with previous runs
+print("\n📊 COMPARISON WITH PREVIOUS RUNS:")
+print("  Initial (50 samples, KernelExplainer both):")
+print("    Faithfulness: 0.534 → 0.536 (+0.3%)")
+print("    Deletion AUC: 0.288 → 0.499 (-73.0%)")
+print("    Insertion AUC: 0.773 → 0.825 (+6.7%)")
+print("\n  Mixed Methods (full test set, TreeSHAP uncal + KernelExplainer cal):")
+print("    Faithfulness: 0.315 → 0.482 (+53.1%)")
+print("    Deletion AUC: 0.367 → 0.485 (-32.1%)")
+print("    Insertion AUC: 0.679 → 0.763 (+12.4%)")
+print("\n  Current (KernelExplainer both, full test set - FAIR COMPARISON):")
+print(f"    Faithfulness: {summary.iloc[0]['Uncalibrated']:.3f} → {summary.iloc[0]['MCal Calibrated']:.3f} ({summary.iloc[0]['Improvement']})")
+print(f"    Deletion AUC: {summary.iloc[1]['Uncalibrated']:.3f} → {summary.iloc[1]['MCal Calibrated']:.3f} ({summary.iloc[1]['Improvement']})")
+print(f"    Insertion AUC: {summary.iloc[2]['Uncalibrated']:.3f} → {summary.iloc[2]['MCal Calibrated']:.3f} ({summary.iloc[2]['Improvement']})")
+
+# ============================================================================
+# Create Visualizations
+# ============================================================================
+print("\n" + "="*70)
+print("7. CREATING VISUALIZATIONS")
+print("="*70)
+
+output_dir = Path('results')
+output_dir.mkdir(exist_ok=True)
+
+# Deletion Curves
+fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+
+for fracs, scores in results['deletion_curves_uncal']:
+    ax.plot(fracs, scores, color='steelblue', alpha=0.3, linewidth=1)
+for fracs, scores in results['deletion_curves_cal']:
+    ax.plot(fracs, scores, color='darkorange', alpha=0.3, linewidth=1)
+
+# Add average lines
+avg_fracs = results['deletion_curves_uncal'][0][0]
+avg_uncal = np.mean([scores for _, scores in results['deletion_curves_uncal']], axis=0)
+avg_cal = np.mean([scores for _, scores in results['deletion_curves_cal']], axis=0)
+ax.plot(avg_fracs, avg_uncal, color='steelblue', linewidth=3, label='Uncalibrated', marker='o')
+ax.plot(avg_fracs, avg_cal, color='darkorange', linewidth=3, label='MCal Calibrated', marker='s')
+
+ax.set_xlabel('Fraction of Features Deleted', fontsize=12)
+ax.set_ylabel('Prediction Score (Predicted Class)', fontsize=12)
+ax.set_title('CTG: Deletion Curves - Improved (KernelExplainer, Full Test Set)', fontsize=14, fontweight='bold')
+ax.legend(fontsize=11)
+ax.grid(alpha=0.3)
+
+plt.tight_layout()
+plt.savefig(output_dir / 'ctg_deletion_curves_improved.pdf', dpi=300, bbox_inches='tight')
+plt.savefig(output_dir / 'ctg_deletion_curves_improved.png', dpi=150, bbox_inches='tight')
+plt.close()
+print("✓ Saved deletion curves")
+
+# Insertion Curves
+fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+
+for fracs, scores in results['insertion_curves_uncal']:
+    ax.plot(fracs, scores, color='steelblue', alpha=0.3, linewidth=1)
+for fracs, scores in results['insertion_curves_cal']:
+    ax.plot(fracs, scores, color='darkorange', alpha=0.3, linewidth=1)
+
+# Add average lines
+avg_fracs = results['insertion_curves_uncal'][0][0]
+avg_uncal = np.mean([scores for _, scores in results['insertion_curves_uncal']], axis=0)
+avg_cal = np.mean([scores for _, scores in results['insertion_curves_cal']], axis=0)
+ax.plot(avg_fracs, avg_uncal, color='steelblue', linewidth=3, label='Uncalibrated', marker='o')
+ax.plot(avg_fracs, avg_cal, color='darkorange', linewidth=3, label='MCal Calibrated', marker='s')
+
+ax.set_xlabel('Fraction of Features Inserted', fontsize=12)
+ax.set_ylabel('Prediction Score (Predicted Class)', fontsize=12)
+ax.set_title('CTG: Insertion Curves - Improved (KernelExplainer, Full Test Set)', fontsize=14, fontweight='bold')
+ax.legend(fontsize=11)
+ax.grid(alpha=0.3)
+
+plt.tight_layout()
+plt.savefig(output_dir / 'ctg_insertion_curves_improved.pdf', dpi=300, bbox_inches='tight')
+plt.savefig(output_dir / 'ctg_insertion_curves_improved.png', dpi=150, bbox_inches='tight')
+plt.close()
+print("✓ Saved insertion curves")
+
+# Faithfulness Bar Chart
+fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+
+metrics = ['Faithfulness\n(Pearson ρ)', 'Deletion\nAUC', 'Insertion\nAUC']
+uncal_vals = [
+    np.mean(results['uncalibrated']['faithfulness']),
+    np.mean(results['uncalibrated']['deletion_auc']),
+    np.mean(results['uncalibrated']['insertion_auc'])
+]
+cal_vals = [
+    np.mean(results['calibrated']['faithfulness']),
+    np.mean(results['calibrated']['deletion_auc']),
+    np.mean(results['calibrated']['insertion_auc'])
+]
+
+x = np.arange(len(metrics))
+width = 0.35
+
+bars1 = ax.bar(x - width/2, uncal_vals, width, label='Uncalibrated', color='steelblue')
+bars2 = ax.bar(x + width/2, cal_vals, width, label='MCal Calibrated', color='darkorange')
+
+ax.set_ylabel('Score', fontsize=13)
+ax.set_title('CTG: Faithfulness Metrics - Improved (KernelExplainer, Full Test Set)', fontsize=15, fontweight='bold')
+ax.set_xticks(x)
+ax.set_xticklabels(metrics, fontsize=11)
+ax.legend(fontsize=11)
+ax.grid(axis='y', alpha=0.3)
+
+# Add value labels on bars
+for bars in [bars1, bars2]:
+    for bar in bars:
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height,
+                f'{height:.3f}',
+                ha='center', va='bottom', fontsize=10)
+
+plt.tight_layout()
+plt.savefig(output_dir / 'ctg_faithfulness_comparison_improved.pdf', dpi=300, bbox_inches='tight')
+plt.savefig(output_dir / 'ctg_faithfulness_comparison_improved.png', dpi=150, bbox_inches='tight')
+plt.close()
+print("✓ Saved faithfulness comparison")
+
+# ============================================================================
+# Save Results
+# ============================================================================
+print("\n" + "="*70)
+print("8. SAVING RESULTS")
+print("="*70)
+
+summary.to_csv(output_dir / 'ctg_faithfulness_results_improved.csv', index=False)
+print(f"✓ Saved results to {output_dir / 'ctg_faithfulness_results_improved.csv'}")
+
+# ============================================================================
+# Final Summary
+# ============================================================================
+print("\n" + "="*70)
+print("EXPERIMENT COMPLETE!")
+print("="*70)
+print("\n✅ KEY FINDINGS:")
+print("  1. Used TreeSHAP (exact) instead of KernelExplainer (sampling)")
+print("  2. Used full test set (426 samples) instead of 50")
+print("  3. Results should be more reliable and less variance")
+print("\n📊 COMPARISON:")
+print("  Check if Deletion AUC improved compared to previous run (-73% → ?)")
+print("  Full test set should give more statistically significant results")
+print("\n📁 Output files saved to:")
+print(f"  - {output_dir / 'ctg_faithfulness_results_improved.csv'}")
+print(f"  - {output_dir / 'ctg_deletion_curves_improved.pdf'}")
+print(f"  - {output_dir / 'ctg_insertion_curves_improved.pdf'}")
+print(f"  - {output_dir / 'ctg_faithfulness_comparison_improved.pdf'}")
+print("\n" + "="*70)

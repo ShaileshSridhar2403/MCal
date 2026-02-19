@@ -475,11 +475,11 @@ def load_breakhis_clean(split='test', n_samples=None):
     """
     Load clean BreakHis dataset without any augmentation.
     """
-    # BreakHis data is in vision/data/BreakHis/
+    # BreakHis data is in dataset_v2/ at project root
     if split == 'train':
-        data_dir = Path(__file__).parent / "vision" / "data" / "BreakHis" / "BreakHisTraining"
+        data_dir = PROJECT_ROOT / "dataset_v2" / "train"
     else:
-        data_dir = Path(__file__).parent / "vision" / "data" / "BreakHis" / "BreakHisTesting"
+        data_dir = PROJECT_ROOT / "dataset_v2" / "test"
 
     # Create transforms
     transform = transforms.Compose([
@@ -754,6 +754,158 @@ def load_medmcqa_fractionwise(split='test', n_fractions=16, n_samples=None):
     ]
 
     return modified_datasets
+
+
+# =============================================================================
+# CTG (CARDIOTOCOGRAPHY) DATASET
+# =============================================================================
+
+def load_ctg_clean(split='test', n_samples=None):
+    """
+    Load clean CTG (Cardiotocography) dataset without any missingness.
+
+    Args:
+        split: 'train' or 'test' - splits data 80/20
+        n_samples: Number of samples to load from the split
+
+    Returns:
+        X: Features as numpy array (n_samples, n_features)
+        y: Labels as numpy array (n_samples,)
+    """
+    # Load CTG features and targets
+    features_file = PROJECT_ROOT / 'experiments' / 'data' / 'ctg_features.csv'
+    targets_file = PROJECT_ROOT / 'experiments' / 'data' / 'ctg_targets.csv'
+
+    if not features_file.exists() or not targets_file.exists():
+        raise FileNotFoundError(f"CTG data files not found at {features_file.parent}")
+
+    # Load data
+    features_df = pd.read_csv(features_file)
+    targets_df = pd.read_csv(targets_file)
+
+    # Combine features and targets
+    X = features_df.values
+    y = targets_df['NSP'].values - 1  # Convert to 0-indexed (1,2,3 -> 0,1,2)
+
+    # Split train/test (80/20)
+    from sklearn.model_selection import train_test_split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+
+    # Select split
+    if split == 'train':
+        X_split, y_split = X_train, y_train
+    else:
+        X_split, y_split = X_test, y_test
+
+    # Sample if needed
+    if n_samples is not None and n_samples < len(X_split):
+        indices = np.random.RandomState(42).choice(len(X_split), n_samples, replace=False)
+        X_split = X_split[indices]
+        y_split = y_split[indices]
+
+    return X_split, y_split
+
+
+def load_ctg_ablated_prob(split='test', p_ablate=0.5, n_samples=None):
+    """
+    Load CTG with probabilistic feature missingness (binomial).
+
+    Args:
+        split: 'train' or 'test'
+        p_ablate: Probability of ablating each feature (0.0 to 1.0)
+        n_samples: Number of samples to load
+
+    Returns:
+        X: Features with probabilistic missingness (n_samples, n_features)
+        y: Labels as numpy array (n_samples,)
+    """
+    X_clean, y = load_ctg_clean(split, n_samples)
+
+    # Apply probabilistic missingness
+    X_ablated = X_clean.copy()
+    n_samples_actual, n_features = X_ablated.shape
+
+    for i in range(n_samples_actual):
+        # Each feature has p_ablate probability of being masked (binomial)
+        mask = np.random.random(n_features) < p_ablate
+        X_ablated[i, mask] = 0
+
+    return X_ablated, y
+
+
+def load_ctg_ablated_exact(split='test', fraction_ablate=0.5, n_samples=None):
+    """
+    Load CTG with exact fraction of features ablated.
+
+    Args:
+        split: 'train' or 'test'
+        fraction_ablate: Exact fraction of features to ablate (0.0 to 1.0)
+        n_samples: Number of samples to load
+
+    Returns:
+        X: Features with exact missingness (n_samples, n_features)
+        y: Labels as numpy array (n_samples,)
+    """
+    X_clean, y = load_ctg_clean(split, n_samples)
+
+    # Apply exact missingness
+    X_ablated = X_clean.copy()
+    n_samples_actual, n_features = X_ablated.shape
+    n_to_ablate = int(n_features * fraction_ablate)
+
+    for i in range(n_samples_actual):
+        if n_to_ablate > 0:
+            # Randomly select exact number of features to mask
+            ablate_indices = np.random.choice(n_features, n_to_ablate, replace=False)
+            X_ablated[i, ablate_indices] = 0
+
+    return X_ablated, y
+
+
+def load_ctg_clean_and_ablated(split='test', p_ablate=0.5, n_samples=None, seed=None, shuffle=False):
+    """
+    Load clean CTG data and ablated versions with probabilistic feature masking.
+
+    Ensures clean and ablated data are perfectly aligned (same samples).
+
+    Args:
+        split: 'train' or 'test'
+        p_ablate: Probability of masking each feature (default 0.5)
+        n_samples: Number of samples to load
+        seed: Random seed for reproducibility
+        shuffle: Whether to shuffle the data before returning (default False)
+
+    Returns:
+        X_clean: Clean features (n_samples, n_features)
+        X_ablated: Ablated features (n_samples, n_features)
+        y: Labels as numpy array (n_samples,)
+    """
+    # Load clean data
+    X_clean, y = load_ctg_clean(split, n_samples)
+
+    # Shuffle if requested
+    if shuffle:
+        if seed is not None:
+            np.random.seed(seed)
+        perm = np.random.permutation(len(X_clean))
+        X_clean = X_clean[perm]
+        y = y[perm]
+
+    # Create ablated version with probabilistic feature masking
+    X_ablated = X_clean.copy()
+    n_samples_actual, n_features = X_ablated.shape
+
+    if seed is not None:
+        np.random.seed(seed)
+
+    for i in range(n_samples_actual):
+        # Probabilistic masking - each feature independently masked with prob p_ablate
+        mask = np.random.random(n_features) < p_ablate
+        X_ablated[i, mask] = 0
+
+    return X_clean, X_ablated, y
 
 
 # =============================================================================
