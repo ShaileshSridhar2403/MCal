@@ -804,7 +804,7 @@ def main():
     parser.add_argument("--samples", type=int, default=1000, help="Samples per run")
     parser.add_argument("--fractions", type=int, default=10, help="Number of fractions")
     parser.add_argument("--device", type=str, default="cuda", help="Device (cuda/cpu)")
-    parser.add_argument("--save_dir", type=str, default="./results", help="Save directory")
+    parser.add_argument("--save_dir", type=str, default=str(Path(__file__).parent / "results"), help="Save directory")
     parser.add_argument("--model_path", type=str,
                        default="saved_models/language/Meta-Llama-3-8B-Instruct/",
                        help="Path to LLaMA model")

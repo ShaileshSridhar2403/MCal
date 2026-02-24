@@ -1,8 +1,8 @@
-KL Divergence Comparison for physionet (averaged over 1 runs):
+KL Divergence Comparison for physionet (averaged over 10 runs):
 +--------------------------------+---------------------+-----------------------+
 | Method                         | Average KL (Prob)   | Average KL (Argmax)   |
 +================================+=====================+=======================+
-| MCal_CE (Cross-Entropy)        | 3.97e-08 ± 0.00e+00 | 2.97e-03 ± 0.00e+00   |
+| MCal_CE (Cross-Entropy)        | 1.29e-05 ± 1.73e-05 | 1.06e-02 ± 1.43e-03   |
 +--------------------------------+---------------------+-----------------------+
-| MCal_CE_Uncond (Unconditional) | 2.42e-03 ± 0.00e+00 | 3.71e-03 ± 0.00e+00   |
+| MCal_CE_Uncond (Unconditional) | 1.66e-02 ± 8.41e-04 | 1.21e-01 ± 6.26e-03   |
 +--------------------------------+---------------------+-----------------------+

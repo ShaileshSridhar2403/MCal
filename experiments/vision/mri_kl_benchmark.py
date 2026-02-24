@@ -406,7 +406,7 @@ def apply_mcal_ce_uncond_calibrator(outputs_tensor, target_labels, device, max_s
     train_tensor = torch.zeros_like(outputs_tensor[0])
 
     for i in range(n_samples):
-        fraction_ind = np.random.binomial(n_fractions,0.5)
+        fraction_ind = np.random.binomial(n_fractions-1, 0.5)
         train_tensor[i,:] = outputs_tensor[fraction_ind][i]
 
     # Create and fit MCal_CE calibrator
@@ -880,7 +880,7 @@ def main():
     parser.add_argument("--samples", type=int, default=1000, help="Samples per fraction")
     parser.add_argument("--fractions", type=int, default=16, help="Number of fractions")
     parser.add_argument("--device", type=str, default="cuda", help="Device (cuda/cpu)")
-    parser.add_argument("--save_dir", type=str, default="./results", help="Save directory")
+    parser.add_argument("--save_dir", type=str, default=str(Path(__file__).parent / "results"), help="Save directory")
     parser.add_argument("--patchcutout_data_dir", type=str, default="../../../XAI_Benchmark/dataset_store/model_outputs", 
                        help="Directory containing PatchCutout predictions from XAI_Benchmark")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing results")
