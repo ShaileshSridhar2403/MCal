@@ -703,7 +703,7 @@ def main():
                        default=['baseline', 'mcal_ce', 'mcal_ce_uncond', 'retrain'],
                        help="Methods to benchmark")
     parser.add_argument("--device", default="cuda", help="Device to use")
-    parser.add_argument("--save_dir", default="./results", help="Directory to save results")
+    parser.add_argument("--save_dir", default=str(Path(__file__).parent / "results"), help="Directory to save results")
     parser.add_argument("--n_runs", type=int, default=3, help="Number of runs")
     parser.add_argument("--n_samples", type=int, default=1000, help="Number of samples per run")
     parser.add_argument("--n_fractions", type=int, default=10, help="Number of ablation fractions")

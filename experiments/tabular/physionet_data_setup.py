@@ -171,7 +171,7 @@ def apply_missing_data_simulation(data, removal_fraction):
 
 
 def load_physionet_data(model_type="vanilla", fill_value="mean", n_samples=1000, n_fractions=10,
-                       missingness_dir="/home/antonxue/shailesh/MCal/data/tabular/missingness_levels",
+                       missingness_dir=str(Path(__file__).parent.parent.parent / "data" / "tabular" / "missingness_levels"),
                        missing_value=None):
     """
     Simple, clean PhysioNet data loading following MRI pattern.
