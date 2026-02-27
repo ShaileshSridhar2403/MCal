@@ -1,8 +1,8 @@
-KL Divergence Comparison for MedQA (averaged over 1 runs):
+KL Divergence Comparison for MedQA (averaged over 10 runs):
 +--------------------------------+---------------------+-----------------------+
 | Method                         | Average KL (Prob)   | Average KL (Argmax)   |
 +================================+=====================+=======================+
-| MCal_CE (Cross-Entropy)        | 6.73e-06 ± 0.00e+00 | 2.11e-06 ± 0.00e+00   |
+| MCal_CE (Cross-Entropy)        | 1.82e-06 ± 2.37e-06 | 3.09e-03 ± 3.75e-04   |
 +--------------------------------+---------------------+-----------------------+
-| MCal_CE_Uncond (Unconditional) | 1.54e-01 ± 0.00e+00 | 2.31e-01 ± 0.00e+00   |
+| MCal_CE_Uncond (Unconditional) | 1.01e-03 ± 5.76e-04 | 4.00e-03 ± 2.30e-03   |
 +--------------------------------+---------------------+-----------------------+
