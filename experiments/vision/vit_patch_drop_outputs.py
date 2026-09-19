@@ -4,7 +4,6 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-import pdb
 from pathlib import Path
 
 
@@ -177,7 +176,6 @@ def get_patch_drop_outputs(dataset_name, device, batch_size=32, num_classes=None
                 replace=False
             ).tolist()
 
-            # pdb.set_trace()
             
             # Always include class token (index 0)
             patches_to_keep = [0] + patches_to_keep
@@ -186,7 +184,6 @@ def get_patch_drop_outputs(dataset_name, device, batch_size=32, num_classes=None
             patch_mask = create_patch_mask('indices', specific_patches=patches_to_keep, 
                                           total_patches=total_patches + 1, device=device)
             
-            # pdb.set_trace()
             
             # Run inference with the mask
             with torch.no_grad():
@@ -226,4 +223,3 @@ if __name__ == "__main__":
 
 
 
-    pdb.set_trace()

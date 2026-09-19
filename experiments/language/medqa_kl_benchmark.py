@@ -18,7 +18,6 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import json
 from tabulate import tabulate
-import pdb
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent.parent
@@ -121,7 +120,6 @@ def calculate_kl_metrics(outputs, labels=None, device=None):
         avg_accuracy = np.mean(accuracy_values)
         result['kl_values_accuracy'] = accuracy_values
         result['average_accuracy'] = avg_accuracy
-    # pdb.set_trace()
     return result
 
 def apply_transform(outputs, labels, method, device=None, **kwargs):
@@ -214,7 +212,6 @@ def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=50
     for fraction in tqdm(range(n_fractions), desc="Applying MCal_CE calibrator"):
         calibrator = MCal_CE(num_classes=n_classes, head_type="linear")
         calibrator.to(device)
-        # pdb.set_trace()
         calibrator.fit(
             ablated_probs=outputs_tensor[fraction],
             target_labels=target_labels,
@@ -576,7 +573,6 @@ def load_medqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
         predictions = torch.from_numpy(predictions).float()
         labels = torch.from_numpy(labels).long()
 
-        # pdb.set_trace()
         model.model.cpu()
         del model
 
@@ -729,7 +725,6 @@ def process_medqa_dataset(methods=None, device="cuda", save_dir="./results", n_r
     # Aggregate results
     print("\nAggregating results across all runs...")
     aggregated_results = aggregate_results(all_results)
-    # pdb.set_trace()
     # Save results as JSON
     json_path = os.path.join(save_dir, "json", "aggregated_results_medqa.json")
     json_serializable_results = convert_to_json_serializable(aggregated_results)

@@ -13,7 +13,6 @@ from tqdm import tqdm
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent.parent
-import pdb
 
 # Import MCal data loaders
 from mcal.data.loaders import BreakHisLoader
@@ -42,7 +41,6 @@ def calculate_breakhis_mean_pixel_values():
     print("Calculating mean pixel values...")
     for i, (image, _) in enumerate(tqdm(train_dataset, desc="Processing images")):
         # We KNOW that image has shape (3,224,224)
-        # pdb.set_trace()
         image = image.reshape(3, -1)  # Changes image to shape (3, 224*224)
         running_sum += image.mean(dim=1)  # Shape (3,)
         

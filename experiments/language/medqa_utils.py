@@ -14,7 +14,6 @@ import os
 from pathlib import Path
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from tqdm import tqdm
-# import pdb
 import torch.nn.functional as F
 
 # ===== TEXT ABLATION UTILITIES =====
@@ -244,7 +243,6 @@ class MCal_LLaMAModel:
         for prompt in prompts:
             probs = self.get_choice_probabilities(prompt, num_options)
             batch_results.append(probs)
-        # pdb.set_trace()
         return batch_results
 
     def __call__(self, prompts, num_options=5):
@@ -255,7 +253,6 @@ class MCal_LLaMAModel:
 
 def create_medqa_prompt(question_data, removal_fraction=None, prompt_type='default', use_tokenizer=False, tokenizer=None):
     """Create a MedQA-style prompt with optional ablation."""
-    # pdb.set_trace()
     # Extract question and choices
     if isinstance(question_data, dict):
         question = question_data.get('question', '')
@@ -297,7 +294,6 @@ def create_medqa_prompt(question_data, removal_fraction=None, prompt_type='defau
             prompt += f"{choice_letters[i]}. {choice_text}\n"
 
     prompt += "Answer:"
-    # pdb.set_trace()
     return prompt
 
 def map_probs_to_list(prob_dict, num_options=5):
@@ -375,7 +371,6 @@ def generate_fractionwise_predictions_with_token_dropping(model, data, removal_f
                     fraction_probs.append(np.ones(num_options) * (1/num_options))
                     continue
                 fraction_probs.append(prob_list)
-        # pdb.set_trace()
         all_fraction_probs.append(np.array(fraction_probs))
 
         # Print mean probabilities for debugging
@@ -384,7 +379,6 @@ def generate_fractionwise_predictions_with_token_dropping(model, data, removal_f
             print(f"  Fraction {removal_fraction:.1f} - Mean probabilities: {mean_probs}")
 
     # Convert to numpy array with shape (n_fractions, n_samples, n_options)
-    # import pdb; pdb.set_trace()
 
     all_fraction_probs_np = np.array(all_fraction_probs)
 
@@ -890,7 +884,6 @@ def generate_fractionwise_predictions(
                     fraction_probs.append(np.ones(num_options) * (1/num_options))  # Uniform distribution
                 else:
                     fraction_probs.append(prob_list)
-        # pdb.set_trace()
 
         all_fraction_probs.append(np.array(fraction_probs))
 
@@ -898,14 +891,12 @@ def generate_fractionwise_predictions(
         fraction_array = np.array(fraction_probs)
         mean_probs = np.mean(fraction_array, axis=0)
         # mean_argmax_probs = np.argmax(mean_probs)
-        # pdb.set_trace()
         mean_argmax_probs = F.one_hot(torch.tensor(fraction_probs).argmax(dim=-1), num_classes=5).float().mean(dim=0)
 
 
         print(f"  Fraction {removal_fraction:.1f} - Mean probabilities: {mean_probs} - Mean argmax probs: {[round(i,2) for i in mean_argmax_probs.tolist()]}")
 
     # Convert to numpy array with shape (n_fractions, n_samples, n_classes)
-    # import pdb; pdb.set_trace()
     all_fraction_probs_np = np.array(all_fraction_probs)
 
     return all_fraction_probs_np

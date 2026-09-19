@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 import random
-import pdb
 
 def patch_segment(image, patch_height=8, patch_width=8,permute = None,dtype = "torch"):
     #Input: C,H,W
@@ -34,7 +33,6 @@ def patch_segment(image, patch_height=8, patch_width=8,permute = None,dtype = "t
 
 def remove_random_features(image, segmentation_fn, removal_fraction, patch_height,patch_width,fill_val=0):
 
-    # pdb.set_trace()
     segments = segmentation_fn(image,patch_height,patch_width).to(image.device)
 
     # Calculate the number of segments to retain
@@ -54,15 +52,12 @@ def remove_random_features(image, segmentation_fn, removal_fraction, patch_heigh
     masked_image = (image * mask.unsqueeze(0)).squeeze()
 
     # Fill the non-retained segments with the specified fill value
-    # pdb.set_trace()
     masked_image = masked_image + (1 - mask.int()).unsqueeze(0) * torch.tensor(fill_val).to(image.device).view(-1, 1, 1)
-    # pdb.set_trace()
     return masked_image.squeeze()
 
 
 def remove_mask(image, segmentation_fn, mask_vector, patch_height,patch_width,fill_val=0):
 
-    pdb.set_trace()
     segments = segmentation_fn(image,patch_height,patch_width)
 
     # Calculate the number of segments to retain

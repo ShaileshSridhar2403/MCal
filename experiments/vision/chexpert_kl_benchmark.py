@@ -19,7 +19,6 @@ from tabulate import tabulate
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from torchvision import datasets
-import pdb
 # import notebook_data_loader as ndl
 import experiments.vision.chexpert_data_setup as cds
 from experiments.vision.vit_patch_drop_outputs import get_patch_drop_outputs
@@ -295,7 +294,6 @@ def apply_logits_sharp_transform(outputs, device, num_epochs=1000, **kwargs):
 
 def apply_mcal_calibrator(outputs, device, kappa=4.0, max_steps=10000, **kwargs):
     """Apply MCal calibrator using uniform target distribution - single training like LogitsSharp."""
-    # pdb.set_trace()
     n_fractions, n_samples, n_classes = outputs.shape
     transformed_outputs = np.zeros_like(outputs.detach().cpu().numpy())
     
@@ -312,7 +310,6 @@ def apply_mcal_calibrator(outputs, device, kappa=4.0, max_steps=10000, **kwargs)
         # Create and fit MCal calibrator with uniform target
         calibrator = MCal(num_classes=n_classes, target_distribution=uniform_target)
         calibrator.to(device)
-        # pdb.set_trace()
         calibrator.fit(
             ablated_probs=ablated_probs,
             target_distribution=uniform_target,
@@ -737,7 +734,6 @@ def main():
     device = args.device if torch.cuda.is_available() or args.device == "cpu" else "cpu"
     print(f"Using device: {device}")
     
-    # pdb.set_trace()
     # Run benchmark
 
     # change to chexpert
@@ -758,5 +754,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # pdb.set_trace()
     main()

@@ -5,7 +5,6 @@ import torch
 import torch.nn as nn
 from tqdm.notebook import tqdm
 import timm
-import pdb
 
 # Add project root to path
 project_root = Path().absolute().parent.parent
@@ -141,7 +140,6 @@ def load_breakhis_data(model_type = "vanilla",fill_value=0):
             random_dist="binomial",
             fill_val=fill_value
         )
-        # pdb.set_trace()
         # t
         return patch_cutout(img_tensor)
 
@@ -241,7 +239,6 @@ def load_breakhis_data(model_type = "vanilla",fill_value=0):
     print(f"   All probabilities shape: {all_probs.shape} (k={len(ablation_fractions)}, n={all_probs.shape[1]}, c={all_probs.shape[2]})")
     print(f"   True labels shape: {true_labels.shape}")
     print(f"   Ablation fractions: {ablation_fractions}")
-    # pdb.set_trace()
     return all_probs, true_labels
 
 if __name__ == "__main__":
@@ -269,7 +266,6 @@ if __name__ == "__main__":
     sample_image, sample_label = test_dataset_clean[0]
     class_name = breakhis_loader.class_names[sample_label]
 
-    pdb.set_trace()
     
     print(f"Sample image shape: {sample_image.shape}")
     print(f"Sample label: {sample_label} ({class_name})")

@@ -6,7 +6,6 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from tqdm import tqdm
-import pdb
 import json
 import glob
 import os
@@ -113,7 +112,6 @@ class MCal_CE(BaseCalibrator):
             calibrated_logits = self.scale * ablated_logits + self.bias
         else:
             # Use the neural network head (linear or mlp)
-            # pdb.set_trace()
             calibrated_logits = self.head(ablated_logits)
             
         if return_logits:
@@ -147,14 +145,12 @@ class MCal_CE(BaseCalibrator):
         """
         # self._validate_fit_inputs(ablated_probs, None)
         
-        # pdb.set_trace()
         optimizer = optim.Adam(self.parameters(), lr=lr)
         stats = {"loss": [], "acc": []}
 
         pbar = tqdm(range(max_steps), desc="MCal_CE Training") if verbose else range(max_steps)
         for step in pbar:
             optimizer.zero_grad()
-            # pdb.set_trace()
             calibrated_logits = self.forward(ablated_probs, return_logits=True)
             loss = nn.CrossEntropyLoss()(calibrated_logits, target_labels)
             
@@ -246,7 +242,6 @@ class MCal_CE(BaseCalibrator):
                         learned_params[f'{name}_weight'] = layer.weight.cpu().numpy().tolist()
                         if hasattr(layer, 'bias') and layer.bias is not None:
                             learned_params[f'{name}_bias'] = layer.bias.cpu().numpy().tolist()
-            # pdb.set_trace()
             
             # Create comprehensive results dictionary
             results_data = {
@@ -303,7 +298,6 @@ class MCal_CE(BaseCalibrator):
             print(f"KL divergence (mean argmax vs uniform): {kl_div_argmax:.6f}")
             print(f"Accuracy (vs target labels): {accuracy:.6f}")
 
-        # pdb.set_trace()
 
         self._is_fitted = True
         return stats

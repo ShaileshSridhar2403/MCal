@@ -5,7 +5,6 @@ import torch
 import torch.nn as nn
 from tqdm.notebook import tqdm
 import timm
-import pdb
 import numpy as np
 
 # Add project root to path
@@ -65,7 +64,6 @@ def load_mri_data(model_type = "vanilla",fill_value=0):
             random_dist="binomial",
             fill_val=fill_value
         )
-        # pdb.set_trace()
         # t
         return patch_cutout(img_tensor)
 
@@ -134,7 +132,6 @@ def load_mri_data(model_type = "vanilla",fill_value=0):
             batch_probs = []  # Shape: (k, batch_size, num_classes)
             
             # Generate predictions for each ablation fraction with progress bar
-            # pdb.set_trace()
             for fraction in tqdm(ablation_fractions, desc=f"Batch {batch_idx+1} - Ablation levels", leave=False):
                 # Create ablated data for this fraction (keep on GPU)
 
@@ -164,12 +161,10 @@ def load_mri_data(model_type = "vanilla",fill_value=0):
     # Concatenate all predictions: (k, n, c)
     all_probs = torch.cat(all_probs, dim=1)  # Concatenate along sample dimension
     true_labels = torch.cat(true_labels, dim=0)
-    # pdb.set_trace()
     print(f"✅ Generated predictions for {all_probs.shape[1]} samples with {len(ablation_fractions)} ablation levels")
     print(f"   All probabilities shape: {all_probs.shape} (k={len(ablation_fractions)}, n={all_probs.shape[1]}, c={all_probs.shape[2]})")
     print(f"   True labels shape: {true_labels.shape}")
     print(f"   Ablation fractions: {ablation_fractions}")
-    # pdb.set_trace()
     return all_probs, true_labels
 
 
@@ -219,7 +214,6 @@ def load_mri_data_binomial(model_type = "vanilla",fill_value=0):
             random_dist="binomial",
             fill_val=fill_value
         )
-        # pdb.set_trace()
         # t
         return patch_cutout(img_tensor)
 
@@ -288,7 +282,6 @@ def load_mri_data_binomial(model_type = "vanilla",fill_value=0):
             batch_probs = []  # Shape: (k, batch_size, num_classes)
             
             # Generate predictions for each ablation fraction with progress bar
-            # pdb.set_trace()
             for fraction in tqdm(ablation_fractions, desc=f"Batch {batch_idx+1} - Ablation levels", leave=False):
                 # Create ablated data for this fraction (keep on GPU)
 
@@ -325,12 +318,10 @@ def load_mri_data_binomial(model_type = "vanilla",fill_value=0):
     true_labels = all_probs.repeat(len(ablation_fractions))
 
     
-    # pdb.set_trace()
     print(f"✅ Generated predictions for {all_probs.shape[1]} samples with {len(ablation_fractions)} ablation levels")
     print(f"   All probabilities shape: {all_probs.shape} (k={len(ablation_fractions)}, n={all_probs.shape[1]}, c={all_probs.shape[2]})")
     print(f"   True labels shape: {true_labels.shape}")
     print(f"   Ablation fractions: {ablation_fractions}")
-    # pdb.set_trace()
     return all_probs, true_labels
 
 
@@ -359,7 +350,6 @@ if __name__ == "__main__":
     sample_image, sample_label = test_dataset_clean[0]
     class_name = mri_loader.class_names[sample_label]
 
-    pdb.set_trace()
     
     print(f"Sample image shape: {sample_image.shape}")
     print(f"Sample label: {sample_label} ({class_name})")

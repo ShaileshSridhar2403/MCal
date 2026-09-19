@@ -18,7 +18,6 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import json
 from tabulate import tabulate
-import pdb
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent.parent
@@ -69,7 +68,6 @@ def calculate_kl_metrics(outputs, labels=None, device=None):
 
         # Uniform distribution for comparison
         # uniform_dist = torch.ones(n_outputs, device=device) / n_outputs
-        # pdb.set_trace()
         # clean_dist = labels.mean(dim = 0)
         clean_dist = torch.tensor(outputs[0], dtype=torch.float32, device=device).mean(dim=0)
 
@@ -185,7 +183,6 @@ def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=50
     for fraction in tqdm(range(n_fractions), desc="Applying MCal_CE calibrator"):
         calibrator = MCal_CE(num_classes=n_classes, head_type="linear")
         calibrator.to(device)
-        # pdb.set_trace()
         calibrator.fit(
             ablated_probs=outputs_tensor[fraction],
             target_labels=target_labels,

@@ -6,7 +6,6 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from tqdm import tqdm
-import pdb
 
 from .base import BaseCalibrator
 
@@ -57,7 +56,6 @@ class PlattCalibrator(BaseCalibrator):
         Returns:
             Dictionary containing training statistics
         """
-        # pdb.set_trace()
         # self._validate_fit_inputs(ablated_probs, labels)
             
         optimizer = optim.Adam(self.parameters(), lr=lr)

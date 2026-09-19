@@ -11,7 +11,6 @@ import timm
 import torch
 import torch.nn as nn
 from tqdm.notebook import tqdm
-import pdb
 import sys
 from pathlib import Path
 
@@ -80,7 +79,6 @@ class ChestXrayDataset(Dataset):
         df = balance_dataframe(dataframe,task,max_n)
         self.image_paths = df.Path.apply(lambda path : os.path.join(folder_dir, path)).tolist()
         self.image_labels = [ i for i in df[task].apply(int).tolist()]
-        # pdb.set_trace()
 
     def __len__(self):
         return len(self.image_paths)
@@ -98,7 +96,6 @@ class ChestXrayDataset(Dataset):
 
         # Resize and convert image to torch tensor
         image_data = self.transform(image_data)
-        # pdb.set_trace()
 
         return image_data, self.image_labels[index]
 
@@ -208,7 +205,6 @@ def load_chexpert_data(model_type='vanilla', fill_value=0):
             random_dist="binomial",
             fill_val=fill_value
         )
-        # pdb.set_trace()
         return patch_cutout(img_tensor)
 
 
@@ -311,7 +307,6 @@ def load_chexpert_data(model_type='vanilla', fill_value=0):
     print(f"   All probabilities shape: {all_probs.shape} (k={len(ablation_fractions)}, n={all_probs.shape[1]}, c={all_probs.shape[2]})")
     print(f"   True labels shape: {true_labels.shape}")
     print(f"   Ablation fractions: {ablation_fractions}")
-    # pdb.set_trace()
 
     return all_probs, true_labels
 
@@ -342,7 +337,6 @@ if __name__ == "__main__":
     sample_image, sample_label = test_dataset_clean[0]
     class_name = chexpert_loader.class_names[sample_label]
 
-    pdb.set_trace()
 
     
     print(f"Sample image shape: {sample_image.shape}")

@@ -19,7 +19,6 @@ from tabulate import tabulate
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from torchvision import datasets
-import pdb
 import experiments.vision.mri_data_setup as mds
 from experiments.vision.vit_patch_drop_outputs import get_patch_drop_outputs
 
@@ -315,7 +314,6 @@ def apply_logits_sharp_transform(outputs, device, num_epochs=1000, **kwargs):
 
 def apply_mcal_calibrator(outputs, device, kappa=4.0, max_steps=10000, **kwargs):
     """Apply MCal calibrator using uniform target distribution - single training like LogitsSharp."""
-    # pdb.set_trace()
     n_fractions, n_samples, n_classes = outputs.shape
     transformed_outputs = np.zeros_like(outputs.detach().cpu().numpy())
     
@@ -332,7 +330,6 @@ def apply_mcal_calibrator(outputs, device, kappa=4.0, max_steps=10000, **kwargs)
         # Create and fit MCal calibrator with uniform target
         calibrator = MCal(num_classes=n_classes, target_distribution=uniform_target)
         calibrator.to(device)
-        # pdb.set_trace()
         calibrator.fit(
             ablated_probs=ablated_probs,
             target_distribution=uniform_target,
@@ -354,7 +351,6 @@ def apply_mcal_calibrator(outputs, device, kappa=4.0, max_steps=10000, **kwargs)
 
 def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=5000, head_type="linear", experiment_id="mri_experiment", **kwargs):
     """Apply MCal_CE calibrator using cross-entropy loss with target labels from 0th index (unablated predictions)."""
-    # pdb.set_trace()
     # outputs_tensor, target_labels = ndl.load_mri_data()
 
     n_fractions, n_samples, n_classes = outputs_tensor.shape
@@ -710,7 +706,6 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
                 # MCal_CE now handles labels internally, no need to request them
                 need_labels = False
                 predictions, labels = mds.load_mri_data()
-                # pdb.set_trace()
                 
                 # result = generate_fractionwise_predictions_from_images(
                 #     model, dataloader, n_samples, n_fractions, device, 
@@ -758,7 +753,6 @@ def process_mri_dataset(methods=None, device="cuda", save_dir="./results", n_run
     aggregated_results = aggregate_results(all_results)
     
     # Save results as JSON
-    # pdb.set_trace()
     json_path = os.path.join(save_dir, "json", "aggregated_results_mri.json")
     
     # Convert to JSON serializable format
@@ -895,7 +889,6 @@ def main():
     device = args.device if torch.cuda.is_available() or args.device == "cpu" else "cpu"
     print(f"Using device: {device}")
     
-    # pdb.set_trace()
     # Run benchmark
     aggregated_results = process_mri_dataset(
         methods=args.methods,
@@ -913,5 +906,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # pdb.set_trace()
     main()

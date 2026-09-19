@@ -23,7 +23,6 @@ Hacked together by / Copyright 2020 Ross Wightman
 import torch
 import torch.nn as nn
 from functools import partial
-import pdb
 from .helpers import load_pretrained
 from .layers import DropPath, to_2tuple, trunc_normal_
 # from .resnet import resnet26d, resnet50d
@@ -320,7 +319,6 @@ class VisionTransformer(nn.Module):
         x = self.pos_drop(x) # B, N, C
         if patch_mask is not None:
             # patch_mask is B, K
-            # pdb.set_trace()
             B, N, C = x.shape
             if len(patch_mask.shape) == 1: # not a separate one per batch
                 x = x[:, patch_mask]
@@ -343,7 +341,6 @@ class VisionTransformer(nn.Module):
 
     def forward(self, x, patch_mask=None):
         # dict of layer_index -> list of head indices to turn off. If list just contains -1, turn all heads off in that layer
-        # pdb.set_trace()
 
         x = self.forward_features(x, patch_mask=patch_mask)
         x = self.head(x)

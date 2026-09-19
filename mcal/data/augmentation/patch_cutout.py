@@ -8,7 +8,6 @@ import logging
 from .patch_drop import patch_segment, remove_random_features
 
 logger = logging.getLogger(__name__)
-import pdb
 
 
 class PatchCutout:
@@ -68,7 +67,6 @@ class PatchCutout:
         Returns:
             Tensor: Image with random patches removed
         """
-        # pdb.set_trace()
         if not isinstance(img, torch.Tensor):
             raise TypeError("Input must be a torch.Tensor")
         
@@ -86,7 +84,6 @@ class PatchCutout:
             removal_fraction = self.removal_fraction
         
         # Apply patch removal
-        # pdb.set_trace()
         # print("patchcutout*"*50)
 
         augmented_img = remove_random_features(
@@ -99,7 +96,6 @@ class PatchCutout:
         )
         # print("patchcutoutexit*"*50)
 
-        # pdb.set_trace()
         
         return augmented_img
     
@@ -132,7 +128,6 @@ class PatchCutout:
             raise ValueError(f"Unknown random distribution: {self.random_dist}")
         
         # Ensure we don't remove all patches (keep at least one)
-        # pdb.set_trace()
 
         max_removal = (total_patches - 1) / total_patches
         removal_fraction = min(removal_fraction, max_removal)
