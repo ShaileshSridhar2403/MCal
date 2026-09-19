@@ -5,9 +5,7 @@ Run Faithfulness, Deletion, and Insertion Experiments for MCal (Tabular Only)
 Using Breast Cancer dataset from sklearn - no downloads needed!
 """
 
-import sys
 import torch
-import torch.nn as nn
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend

@@ -6,7 +6,6 @@ pre-trained model file. Models are expected in ``MCAL_MODEL_ROOT``
 """
 
 from pathlib import Path
-import os
 
 from ..paths import MODEL_ROOT
 

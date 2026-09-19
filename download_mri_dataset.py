@@ -11,7 +11,6 @@ Requirements:
 3. kaggle package installed (pip install kaggle)
 """
 
-import os
 import sys
 import shutil
 import subprocess

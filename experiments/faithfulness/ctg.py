@@ -6,9 +6,7 @@ Uses SHAP's KernelExplainer for both models and the full test set (426 samples)
 CTG (Cardiotocography) - Multi-class classification (3 classes: Normal, Suspect, Pathologic)
 """
 
-import sys
 import torch
-import torch.nn as nn
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
@@ -18,7 +16,6 @@ from tqdm import tqdm
 from pathlib import Path
 import pandas as pd
 import xgboost as xgb
-from sklearn.model_selection import train_test_split
 import shap
 import warnings
 warnings.filterwarnings('ignore')

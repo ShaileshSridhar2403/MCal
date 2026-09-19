@@ -1,11 +1,8 @@
 # Create a wrapper function to safely apply PatchCutout
-import sys
 from pathlib import Path
 import torch
-import torch.nn as nn
 from tqdm.notebook import tqdm
 import timm
-import numpy as np
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -88,7 +85,6 @@ def load_mri_data(model_type = "vanilla",fill_value=0):
 
     # Balance the dataset using the base loader method
     from torch.utils.data import Subset
-    import numpy as np
 
     # Get all indices and labels from the dataset
     all_indices = list(range(len(train_dataset)))
@@ -327,7 +323,6 @@ def load_mri_data_binomial(model_type = "vanilla",fill_value=0):
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    import numpy as np
     from pathlib import Path
     
     # Create output directory for saved images

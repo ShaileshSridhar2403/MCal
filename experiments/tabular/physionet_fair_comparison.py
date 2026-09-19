@@ -4,8 +4,6 @@ Fair Comparison: Retrain vs MCal (Unconditioned & Conditioned) on PhysioNet.
 Proper 80/20 train/test split — calibrators fitted on train, evaluated on test.
 """
 
-import sys
-import os
 from pathlib import Path
 
 import numpy as np
@@ -21,7 +19,6 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.impute import SimpleImputer
 import xgboost as xgb
-from tqdm import tqdm
 
 # Reproducibility
 np.random.seed(42)

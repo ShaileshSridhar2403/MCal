@@ -2,7 +2,7 @@
 
 import torch
 import numpy as np
-from typing import Union, Tuple, Optional
+from typing import Union, Tuple
 import logging
 
 from .patch_drop import patch_segment, remove_random_features

@@ -53,7 +53,6 @@ class BaseDataLoader(ABC):
     @abstractmethod
     def download_dataset(self, **kwargs) -> None:
         """Download the dataset if it doesn't exist."""
-        pass
     
     @abstractmethod
     def setup_dataset(
@@ -64,7 +63,6 @@ class BaseDataLoader(ABC):
         **kwargs
     ) -> Tuple[Optional[Dataset], Optional[Dataset], Optional[Dataset]]:
         """Setup and return train, test, validation datasets."""
-        pass
     
     @abstractmethod
     def get_transforms(
@@ -74,7 +72,6 @@ class BaseDataLoader(ABC):
         **kwargs
     ) -> transforms.Compose:
         """Get preprocessing transforms for the given split."""
-        pass
     
     def get_dataloader(
         self,
@@ -181,7 +178,7 @@ class BaseDataLoader(ABC):
         # Collect all image paths and labels
         paths = []
         labels = []
-        print(parent_dir)
+        logger.debug(parent_dir)
         for class_dir in parent_dir.iterdir():
             if class_dir.is_dir():
                 class_name = class_dir.name

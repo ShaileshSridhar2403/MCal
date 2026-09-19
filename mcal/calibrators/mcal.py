@@ -1,5 +1,6 @@
 """MCal - Vector scaling calibration model."""
 
+import logging
 from typing import Optional, Dict, Any
 import torch
 import torch.nn as nn
@@ -11,6 +12,8 @@ from .base import BaseCalibrator
 
 # Import kl_divergence from utils
 from ..utils.optimization import kl_divergence
+
+logger = logging.getLogger(__name__)
 
 
 class MCal(BaseCalibrator):
@@ -86,7 +89,7 @@ class MCal(BaseCalibrator):
         Returns:
             Dictionary containing training statistics
         """
-        # self._validate_fit_inputs(ablated_probs, target_distribution)
+        self._validate_fit_inputs(ablated_probs, target_distribution)
         
         # Set target distribution for this fit call
         if target_distribution is not None:
@@ -95,7 +98,7 @@ class MCal(BaseCalibrator):
             # Legacy backward compatibility: use clean_probs expectation as target
             target_dist = clean_probs.mean(dim=0)
             if verbose:
-                print("Using clean_probs expectation as target (legacy mode)")
+                logger.info("Using clean_probs expectation as target (legacy mode)")
         else:
             # Use the default target distribution (uniform)
             target_dist = self.target_distribution.to(ablated_probs.device)
@@ -131,11 +134,10 @@ class MCal(BaseCalibrator):
             
             # Check for NaN/inf in forward pass
             if torch.isnan(q).any() or torch.isinf(q).any():
-                if verbose:
-                    print(f"NaN/Inf detected in forward pass at step {step}")
-                    print(f"w: {self.w.data}")
-                    print(f"b: {self.b.data}")
-                    print(f"q stats: min={q.min():.6f}, max={q.max():.6f}, mean={q.mean():.6f}")
+                logger.warning(f"NaN/Inf detected in forward pass at step {step}")
+                logger.debug(f"w: {self.w.data}")
+                logger.debug(f"b: {self.b.data}")
+                logger.debug(f"q stats: min={q.min():.6f}, max={q.max():.6f}, mean={q.mean():.6f}")
                 break
                 
             s = (q / q.max(dim=1, keepdim=True).values) if scale_before_sharpen else q
@@ -147,9 +149,8 @@ class MCal(BaseCalibrator):
             
             # Check for NaN/inf after sharpening
             if torch.isnan(s).any() or torch.isinf(s).any():
-                if verbose:
-                    print(f"NaN/Inf detected in sharpening at step {step}")
-                    print(f"s stats: min={s.min():.6f}, max={s.max():.6f}, mean={s.mean():.6f}")
+                logger.warning(f"NaN/Inf detected in sharpening at step {step}")
+                logger.debug(f"s stats: min={s.min():.6f}, max={s.max():.6f}, mean={s.mean():.6f}")
                 break
 
             # Compute loss against target distribution (expectation-based like LogitsSharp)
@@ -158,8 +159,7 @@ class MCal(BaseCalibrator):
             
             # Check for NaN/inf in loss
             if torch.isnan(loss) or torch.isinf(loss):
-                if verbose:
-                    print(f"NaN/Inf detected in loss at step {step}: {loss.item()}")
+                logger.warning(f"NaN/Inf detected in loss at step {step}: {loss.item()}")
                 break
                 
             loss.backward()
@@ -184,7 +184,7 @@ class MCal(BaseCalibrator):
                 
             # Additional debugging every 100 steps
             if verbose and step % 100 == 0:
-                print(f"Step {step}: w={self.w.data.mean():.6f}±{self.w.data.std():.6f}, "
+                logger.debug(f"Step {step}: w={self.w.data.mean():.6f}±{self.w.data.std():.6f}, "
                       f"b={self.b.data.mean():.6f}±{self.b.data.std():.6f}")
 
         self._is_fitted = True

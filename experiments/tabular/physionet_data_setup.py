@@ -6,7 +6,6 @@ This module provides a clean, simplified data loading interface for PhysioNet
 following the MRI data setup pattern. Reduced from 816 lines to ~200 lines.
 """
 
-import sys
 import os
 import glob
 import numpy as np

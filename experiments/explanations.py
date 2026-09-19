@@ -6,12 +6,10 @@ A single file containing all explanation methods with a consistent API.
 Includes LIME, SHAP, and other attribution techniques for vision, text, and tabular data.
 """
 
-import os
-import sys
 import torch
 import torch.nn as nn
 import numpy as np
-from typing import Optional, Tuple, List, Union, Dict, Any
+from typing import Optional, Tuple, List, Union, Any
 from abc import ABC, abstractmethod
 
 
@@ -41,7 +39,6 @@ class BaseExplainer(ABC):
         Returns:
             Feature importance scores
         """
-        pass
 
     def explain_batch(self, inputs: torch.Tensor, labels: Optional[torch.Tensor] = None) -> List[torch.Tensor]:
         """

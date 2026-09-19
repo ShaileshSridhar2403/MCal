@@ -4,13 +4,11 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple, Union
+from typing import Optional, Tuple, Union
 import logging
 
-import torch
 from torch.utils.data import Dataset
 from torchvision import datasets
-import torchvision.transforms as transforms
 
 from .base_loader import VisionDataLoader
 
@@ -207,7 +205,7 @@ class MRILoader(VisionDataLoader):
             kaggle_credentials: Path to kaggle.json file
             **kwargs: Additional arguments
         """
-        print("Downloading MRI Dataset....")
+        logger.info("Downloading MRI Dataset....")
         if kaggle_credentials:
             self._setup_kaggle_credentials(kaggle_credentials)
         
@@ -215,7 +213,7 @@ class MRILoader(VisionDataLoader):
             # Download using Kaggle API
             cmd = "kaggle datasets download -d masoudnickparvar/brain-tumor-mri-dataset"
             result = subprocess.run(cmd.split(), cwd=self.data_dir, capture_output=True, text=True)
-            print(result)
+            logger.info(result)
             if result.returncode == 0:
                 # Extract the downloaded zip
                 zip_path = self.data_dir / "brain-tumor-mri-dataset.zip"

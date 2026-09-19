@@ -8,13 +8,11 @@ but for MedMCQA dataset and LLaMA predictions.
 Self-contained implementation - no XAI_Benchmark dependencies.
 """
 
-import sys
 import os
 import argparse
 from pathlib import Path
 import numpy as np
 import torch
-import torch.nn.functional as F
 from tqdm import tqdm
 import json
 from tabulate import tabulate
@@ -28,8 +26,6 @@ from mcal.paths import MODEL_ROOT
 from mcal.calibrators.mcal_ce import MCal_CE
 from experiments.mcal_ce_results import save_fit_summary, combine_fraction_results
 
-# Per-fraction and combined MCal_CE summaries are written here
-MCAL_CE_RESULTS_DIR = Path(__file__).parent / "results"
 from mcal.calibrators.temperature import TemperatureScaling
 from mcal.calibrators.platt import PlattCalibrator
 
@@ -40,10 +36,11 @@ from experiments.language.medmcqa_utils import (
     load_synthetic_medmcqa_data,
     generate_fractionwise_predictions,
     generate_fractionwise_predictions_with_token_dropping,
-    generate_fractionwise_predictions_with_attention_mask,
-    create_medmcqa_prompt,
-    map_probs_to_list
+    generate_fractionwise_predictions_with_attention_mask
 )
+
+# Per-fraction and combined MCal_CE summaries are written here
+MCAL_CE_RESULTS_DIR = Path(__file__).parent / "results"
 
 def load_medmcqa_llama_model(model_path):
     """Load LLaMA model for MedMCQA."""

@@ -6,13 +6,11 @@ Compares word replacement vs token dropping strategies for text ablation.
 Follows XAI-Benchmark patterns but self-contained for MCal.
 """
 
-import sys
 import os
 import argparse
 from pathlib import Path
 import numpy as np
 import torch
-from tqdm import tqdm
 import json
 from tabulate import tabulate
 
@@ -23,8 +21,7 @@ mcal_root = Path(__file__).parent.parent.parent
 from experiments.language.medqa_utils import (
     MCal_LLaMAModel,
     load_local_medqa_data,
-    generate_fractionwise_predictions_with_token_dropping,
-    map_probs_to_list
+    generate_fractionwise_predictions_with_token_dropping
 )
 
 def calculate_kl_divergence(outputs, uniform_dist=None):

@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional
 
 from .base import BaseTransform
 
-from ..utils.optimization import get_expectation, make_one_hot, kl_divergence
+from ..utils.optimization import make_one_hot, kl_divergence
 
 
 class LogitsSharpTransform(BaseTransform):

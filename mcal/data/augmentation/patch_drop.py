@@ -9,8 +9,7 @@ def patch_segment(image, patch_height=8, patch_width=8,permute = None,dtype = "t
 
     channels, image_height, image_width = image.shape
     if image_height % patch_height != 0 or image_width % patch_width != 0:
-        print("patch height and width need to perfectly divide image")
-        raise ValueError
+        raise ValueError("patch height and width need to perfectly divide image")
 
     row_indices = torch.arange(image_height)
     column_indices = torch.arange(image_width)

@@ -56,7 +56,8 @@ class PlattCalibrator(BaseCalibrator):
         Returns:
             Dictionary containing training statistics
         """
-        # self._validate_fit_inputs(ablated_probs, labels)
+        self._validate_fit_inputs(ablated_probs)
+        assert labels.shape == (ablated_probs.shape[0],), "Expected one integer label per sample"
             
         optimizer = optim.Adam(self.parameters(), lr=lr)
         nll_criterion = nn.CrossEntropyLoss()

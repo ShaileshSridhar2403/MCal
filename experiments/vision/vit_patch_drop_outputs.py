@@ -1,7 +1,5 @@
 import os
-import sys
 import torch
-import torch.nn.functional as F
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from pathlib import Path
@@ -13,7 +11,7 @@ project_root = Path(current_dir).parent.parent
 
 # Import required modules
 from vit_patch_drop.src.models.load_trained_weights import load_vit_model, create_patch_mask
-from mcal.configs.model_dict import model_dict, get_model_path
+from mcal.configs.model_dict import get_model_path
 from mcal.data.loaders import MRILoader, BreakHisLoader, ChexPertLoader
 
 

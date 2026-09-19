@@ -36,7 +36,6 @@ class BaseTransform(ABC):
         Returns:
             Dictionary containing training statistics or metadata
         """
-        pass
     
     @abstractmethod
     def transform(self, input_tensor: torch.Tensor) -> torch.Tensor:
@@ -48,7 +47,6 @@ class BaseTransform(ABC):
         Returns:
             Transformed probability distributions
         """
-        pass
     
     @abstractmethod
     def save(self, path: str) -> None:
@@ -57,7 +55,6 @@ class BaseTransform(ABC):
         Args:
             path: Path to save the transformation parameters
         """
-        pass
     
     @abstractmethod
     def load(self, path: str) -> None:
@@ -66,7 +63,6 @@ class BaseTransform(ABC):
         Args:
             path: Path to load the transformation parameters from
         """
-        pass
     
     @property
     def is_fitted(self) -> bool:

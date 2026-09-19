@@ -3,7 +3,6 @@
 Simple script to ablate and save images with different fill values.
 """
 
-import sys
 from pathlib import Path
 import torch
 import matplotlib.pyplot as plt

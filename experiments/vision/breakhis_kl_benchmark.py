@@ -12,13 +12,9 @@ import argparse
 from pathlib import Path
 import numpy as np
 import torch
-import torch.nn.functional as F
 from tqdm import tqdm
 import json
 from tabulate import tabulate
-from torch.utils.data import DataLoader
-import torchvision.transforms as transforms
-from torchvision import datasets
 import experiments.vision.breakhis_data_setup as bds
 from experiments.vision.vit_patch_drop_outputs import get_patch_drop_outputs
 
@@ -32,27 +28,26 @@ from mcal.configs.dataset_configs import get_dataset_config
 import timm
 
 # Import MCal data loaders
-from mcal.data.loaders import BreakHisLoader
 
 # Import augmentation utilities from MCal
-from mcal.data.augmentation.patch_cutout import PatchCutout
 
 # Import utils directly to avoid circular imports
-from mcal.utils.optimization import get_expectation, make_one_hot, kl_divergence
+from mcal.utils.optimization import get_expectation, kl_divergence
 
 # Import calibrator modules
 from mcal.calibrators.mcal import MCal
 from mcal.calibrators.mcal_ce import MCal_CE
 from experiments.mcal_ce_results import save_fit_summary, combine_fraction_results
 
-# Per-fraction and combined MCal_CE summaries are written here
-MCAL_CE_RESULTS_DIR = Path(__file__).parent / "results"
 from mcal.calibrators.platt import PlattCalibrator
 from mcal.calibrators.temperature import TemperatureScaling
 
 # Import transform modules for backward compatibility  
 from mcal.transforms.lambda_transforms import ExpectationLambdaTransform, OptimizedLambdaTransform
 from mcal.transforms.logits import LogitsSharpTransform
+
+# Per-fraction and combined MCal_CE summaries are written here
+MCAL_CE_RESULTS_DIR = Path(__file__).parent / "results"
 
 
 def load_breakhis_model(augmentation='vanilla', device=None):

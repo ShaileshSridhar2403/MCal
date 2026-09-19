@@ -5,10 +5,8 @@ Run Faithfulness, Deletion, and Insertion Experiments for MCal on CheXpert Datas
 CheXpert - Chest X-ray Classification (Binary: Cardiomegaly)
 """
 
-import sys
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend

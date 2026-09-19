@@ -6,8 +6,6 @@ This script helps test the MRI data loading functionality as used in
 experiments/mri_mcal_linear_mlp_test.ipynb
 """
 
-import sys
-import os
 from pathlib import Path
 import argparse
 import logging

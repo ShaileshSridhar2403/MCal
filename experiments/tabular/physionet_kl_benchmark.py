@@ -11,15 +11,12 @@ This benchmark file only handles:
 All data generation logic is in physionet_data_setup_simple.py
 """
 
-import sys
 import os
 import argparse
 from pathlib import Path
 import numpy as np
 import torch
 from tqdm import tqdm
-import json
-from tabulate import tabulate
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent.parent
@@ -30,8 +27,6 @@ from mcal.calibrators.mcal import MCal
 from mcal.calibrators.mcal_ce import MCal_CE
 from experiments.mcal_ce_results import save_fit_summary, combine_fraction_results
 
-# Per-fraction and combined MCal_CE summaries are written here
-MCAL_CE_RESULTS_DIR = Path(__file__).parent / "results"
 from mcal.calibrators.platt import PlattCalibrator
 from mcal.calibrators.temperature import TemperatureScaling
 
@@ -182,6 +177,9 @@ def aggregate_fractionwise_kl(fractionwise_results):
 
 # MCal optimization utilities
 from mcal.utils.optimization import kl_divergence, get_expectation
+
+# Per-fraction and combined MCal_CE summaries are written here
+MCAL_CE_RESULTS_DIR = Path(__file__).parent / "results"
 
 
 def calculate_kl_metrics(outputs, labels=None, device=None):

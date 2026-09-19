@@ -12,7 +12,6 @@ Experiment Design:
 4. Compare MCal_CE (calibration) vs retrain (retraining) approaches
 """
 
-import os
 import numpy as np
 import pandas as pd
 import torch
@@ -20,19 +19,15 @@ import xgboost as xgb
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, roc_auc_score
+from sklearn.metrics import roc_auc_score
 from pathlib import Path
 import pickle
-from tqdm import tqdm
 import warnings
 
 # Suppress warnings
 warnings.filterwarnings('ignore')
 
 # Add MCal imports
-import sys
-from mcal.calibrators.mcal_ce import MCal_CE
-from mcal.utils.optimization import kl_divergence, get_expectation
 
 
 class ControlledRetrainExperiment:

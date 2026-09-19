@@ -6,7 +6,6 @@ This example demonstrates how to load the pre-trained models from XAI_Benchmark
 and use them for inference and calibration in the MCal framework.
 """
 
-import sys
 from pathlib import Path
 import torch
 import numpy as np
@@ -15,7 +14,7 @@ import numpy as np
 mcal_root = Path(__file__).parent.parent
 
 from mcal.configs.model_dict import get_model_path, MODEL_DICT
-from mcal.configs.dataset_configs import get_dataset_config, get_combined_config
+from mcal.configs.dataset_configs import get_dataset_config
 import timm
 
 

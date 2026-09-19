@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from typing import Optional, Union, List, Tuple, Dict, Any
+from typing import Optional, List, Any
 from abc import ABC, abstractmethod
 
 
@@ -24,7 +24,6 @@ class BaseMetric(ABC):
     @abstractmethod
     def compute(self, *args, **kwargs) -> float:
         """Compute the metric value."""
-        pass
 
 
 # =============================================================================

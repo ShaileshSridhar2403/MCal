@@ -1,10 +1,12 @@
 """Visualization utilities for calibration analysis."""
 
+import logging
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import List, Optional, Union, Tuple
-import torch
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def plot_kl_divergence(
@@ -213,7 +215,7 @@ def plot_kl_divergence(
         fig_prob.savefig(f"{save_path}_probability.png", dpi=300, bbox_inches='tight')
         fig_argmax.savefig(f"{save_path}_argmax.png", dpi=300, bbox_inches='tight')
         
-        print(f"Saved plots to {save_path}_combined.png, {save_path}_probability.png, and {save_path}_argmax.png")
+        logger.info(f"Saved plots to {save_path}_combined.png, {save_path}_probability.png, and {save_path}_argmax.png")
     else:
         plt.show()
     

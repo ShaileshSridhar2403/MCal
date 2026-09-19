@@ -6,7 +6,6 @@ This script loads the entire MRI training dataset and calculates
 the mean pixel value across all images for each RGB channel.
 """
 
-import sys
 from pathlib import Path
 import torch
 from tqdm import tqdm

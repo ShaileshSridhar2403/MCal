@@ -14,7 +14,7 @@ to provide a more complete evaluation of explanation quality.
 import torch
 import torch.nn as nn
 import numpy as np
-from typing import Optional, Union, List, Tuple, Dict, Any
+from typing import Optional, Union, List, Dict, Any
 from scipy.stats import pearsonr
 from abc import ABC, abstractmethod
 import scipy.stats as stats
@@ -27,7 +27,6 @@ class BaseFaithfulnessMetric(ABC):
     @abstractmethod
     def compute(self, *args, **kwargs) -> Union[float, Dict[str, float]]:
         """Compute the metric value."""
-        pass
 
 
 # =============================================================================

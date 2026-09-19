@@ -3,7 +3,6 @@
 Run Faithfulness, Deletion, and Insertion Experiments for MCal
 """
 
-import sys
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader

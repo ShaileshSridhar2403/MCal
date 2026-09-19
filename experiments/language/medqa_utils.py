@@ -11,7 +11,6 @@ import numpy as np
 import random
 import json
 import os
-from pathlib import Path
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from tqdm import tqdm
 import torch.nn.functional as F
@@ -1026,10 +1025,6 @@ def test_medqa_utils():
     print(f"\nPrompt: {prompt}")
     print(f"✓ Prompt creation working")
 
-    # Test synthetic data
-    data = load_synthetic_medqa_data(3)
-    print(f"\n✓ Loaded {len(data)} synthetic questions")
-    print(f"Sample: {data[0]['question'][:50]}...")
 
     print("\n✓ All utilities working correctly!")
 

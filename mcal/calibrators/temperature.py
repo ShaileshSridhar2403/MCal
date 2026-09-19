@@ -1,13 +1,15 @@
 """Temperature scaling calibration model."""
 
-from typing import Dict, Any, Optional
+import logging
+from typing import Dict, Any
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from tqdm import tqdm
 
 from .base import BaseCalibrator
+
+logger = logging.getLogger(__name__)
 
 
 class TemperatureScaling(BaseCalibrator):
@@ -44,7 +46,9 @@ class TemperatureScaling(BaseCalibrator):
         Returns:
             Dictionary containing training statistics
         """
-        # self._validate_fit_inputs(ablated_probs, labels)
+        self._validate_fit_inputs(ablated_probs)
+        assert labels.shape in ((ablated_probs.shape[0],), ablated_probs.shape), \
+            "Expected one integer label or one class-probability row per sample"
         
         # Convert probabilities back to logits (approximate)
         ablated_logits = torch.log(ablated_probs.clamp(1e-6, 1-1e-6))
@@ -69,12 +73,12 @@ class TemperatureScaling(BaseCalibrator):
             return loss
         
         if verbose:
-            print("Fitting temperature scaling...")
+            logger.info("Fitting temperature scaling...")
             
         optimizer.step(closure)
         
         if verbose:
-            print(f"Optimal temperature: {self.temperature.item():.4f}")
+            logger.info(f"Optimal temperature: {self.temperature.item():.4f}")
             
         self._is_fitted = True
         return stats

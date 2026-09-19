@@ -1,7 +1,6 @@
 """
 API-based models for getting next-token logits from language model APIs.
 """
-import os
 import numpy as np
 from typing import List, Dict, Optional, Union
 from openai import OpenAI

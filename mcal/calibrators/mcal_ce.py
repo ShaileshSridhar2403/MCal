@@ -1,5 +1,6 @@
 """MCal_CE - Cross-entropy loss variant of MCal calibration model."""
 
+import logging
 from typing import Optional, Dict, Any
 import torch
 import torch.nn as nn
@@ -10,6 +11,8 @@ from .base import BaseCalibrator
 
 # Import kl_divergence from utils
 from ..utils.optimization import kl_divergence
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -144,7 +147,9 @@ class MCal_CE(BaseCalibrator):
             calibrator (mean probabilities, KL divergences, accuracy and learned
             parameters) is stored in ``self.fit_summary_``. ``fit`` writes no files.
         """
-        # self._validate_fit_inputs(ablated_probs, None)
+        self._validate_fit_inputs(ablated_probs)
+        assert target_labels.shape in ((ablated_probs.shape[0],), ablated_probs.shape), \
+            "Expected one integer label or one class-probability row per sample"
         
         optimizer = optim.Adam(self.parameters(), lr=lr)
         stats = {"loss": [], "acc": []}
@@ -157,8 +162,7 @@ class MCal_CE(BaseCalibrator):
             
             # Check for NaN/inf in loss
             if torch.isnan(loss) or torch.isinf(loss):
-                if verbose:
-                    print(f"NaN/Inf detected in loss at step {step}: {loss.item()}")
+                logger.warning(f"NaN/Inf detected in loss at step {step}: {loss.item()}")
                 break
                 
             loss.backward()
@@ -180,9 +184,9 @@ class MCal_CE(BaseCalibrator):
             
             # Debug: Print initial and final accuracy
             if step == 0:
-                print(f"Initial accuracy: {acc.item():.4f}")
+                logger.debug(f"Initial accuracy: {acc.item():.4f}")
             elif step == max_steps - 1:
-                print(f"Final accuracy: {acc.item():.4f}")
+                logger.debug(f"Final accuracy: {acc.item():.4f}")
 
         # Calculate final calibrated probabilities and KL divergence
         with torch.no_grad():
@@ -219,12 +223,12 @@ class MCal_CE(BaseCalibrator):
             accuracy = (final_predictions == target_labels).float().mean().item()
             
             # Debug information
-            print(f"Target labels distribution: {torch.bincount(target_labels)}")
-            print(f"Predictions distribution: {torch.bincount(final_predictions)}")
-            print(f"Original predictions (before calibration): {torch.bincount(ablated_probs.argmax(dim=1))}")
-            print(f"Sample target labels (first 10): {target_labels[:10]}")
-            print(f"Sample predictions (first 10): {final_predictions[:10]}")
-            print(f"Sample original preds (first 10): {ablated_probs.argmax(dim=1)[:10]}")
+            logger.debug(f"Target labels distribution: {torch.bincount(target_labels)}")
+            logger.debug(f"Predictions distribution: {torch.bincount(final_predictions)}")
+            logger.debug(f"Original predictions (before calibration): {torch.bincount(ablated_probs.argmax(dim=1))}")
+            logger.debug(f"Sample target labels (first 10): {target_labels[:10]}")
+            logger.debug(f"Sample predictions (first 10): {final_predictions[:10]}")
+            logger.debug(f"Sample original preds (first 10): {ablated_probs.argmax(dim=1)[:10]}")
             
             # Extract learned weights and biases
             learned_params = {}
@@ -269,15 +273,15 @@ class MCal_CE(BaseCalibrator):
                 }
             self.fit_summary_ = results_data
             
-            print(f"Final calibrated probabilities shape: {final_calibrated_probs.shape}")
-            print(f"Mean ablated probabilities: {mean_ablated_probs}")
-            print(f"Mean argmaxed ablated probabilities: {mean_argmaxed_ablated_probs}")
-            print(f"Mean calibrated probabilities: {mean_calibrated_probs}")
-            print(f"Mean argmax probabilities: {mean_argmax_probs}")
-            print(f"Uniform distribution: {uniform_dist}")
-            print(f"KL divergence (mean probs vs uniform): {kl_div_probs:.6f}")
-            print(f"KL divergence (mean argmax vs uniform): {kl_div_argmax:.6f}")
-            print(f"Accuracy (vs target labels): {accuracy:.6f}")
+            logger.debug(f"Final calibrated probabilities shape: {final_calibrated_probs.shape}")
+            logger.debug(f"Mean ablated probabilities: {mean_ablated_probs}")
+            logger.debug(f"Mean argmaxed ablated probabilities: {mean_argmaxed_ablated_probs}")
+            logger.debug(f"Mean calibrated probabilities: {mean_calibrated_probs}")
+            logger.debug(f"Mean argmax probabilities: {mean_argmax_probs}")
+            logger.debug(f"Uniform distribution: {uniform_dist}")
+            logger.debug(f"KL divergence (mean probs vs uniform): {kl_div_probs:.6f}")
+            logger.debug(f"KL divergence (mean argmax vs uniform): {kl_div_argmax:.6f}")
+            logger.debug(f"Accuracy (vs target labels): {accuracy:.6f}")
 
 
         self._is_fitted = True

@@ -9,7 +9,6 @@ column, training the model only on the completion tokens.
 
 import argparse
 import os
-import sys
 import json
 from pathlib import Path
 import torch

@@ -1,7 +1,6 @@
 """Optimization utilities for probability calibration."""
 
 import torch
-import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 from tqdm import tqdm

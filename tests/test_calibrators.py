@@ -1,12 +1,6 @@
 """Test calibrators functionality."""
 
-import pytest
 import torch
-import numpy as np
-import sys
-import os
-
-# Add the src directory to path for imports
 
 from mcal.calibrators import MCal, PlattCalibrator, TemperatureScaling
 
@@ -41,7 +35,7 @@ class TestMCal:
         mcal = MCal(self.d)
         stats = mcal.fit(
             self.ablated_probs, 
-            self.clean_probs, 
+            clean_probs=self.clean_probs, 
             verbose=False, 
             kappa=1.0,
             lr=1e-3,
@@ -59,7 +53,7 @@ class TestMCal:
         mcal = MCal(self.d)
         mcal.fit(
             self.ablated_probs, 
-            self.clean_probs, 
+            clean_probs=self.clean_probs, 
             verbose=False, 
             max_steps=50
         )
@@ -78,7 +72,7 @@ class TestMCal:
     
     def test_initialization_with_data(self):
         """Test MCal initialization with data."""
-        mcal = MCal(self.d, self.ablated_probs, self.clean_probs)
+        mcal = MCal(self.d, ablated_probs=self.ablated_probs, clean_probs=self.clean_probs)
         assert mcal.is_fitted
 
 
@@ -97,6 +91,7 @@ class TestPlattCalibrator:
         
         self.ablated_probs = self.clean_probs + torch.rand_like(self.clean_probs) + torch.eye(self.d)[0]
         self.ablated_probs /= self.ablated_probs.sum(dim=1, keepdim=True)
+        self.labels = torch.randint(0, self.d, (self.N,))
     
     def test_initialization(self):
         """Test Platt calibrator initialization."""
@@ -111,7 +106,7 @@ class TestPlattCalibrator:
         platt = PlattCalibrator(self.d)
         stats = platt.fit(
             self.ablated_probs, 
-            self.clean_probs, 
+            self.labels, 
             lr=1e-3, 
             verbose=False, 
             max_steps=100  # Reduced for testing
@@ -127,7 +122,7 @@ class TestPlattCalibrator:
         platt = PlattCalibrator(self.d)
         platt.fit(
             self.ablated_probs, 
-            self.clean_probs, 
+            self.labels, 
             verbose=False, 
             max_steps=50
         )
@@ -160,6 +155,7 @@ class TestTemperatureScaling:
         
         self.ablated_probs = self.clean_probs + 0.1 * torch.rand_like(self.clean_probs)
         self.ablated_probs /= self.ablated_probs.sum(dim=1, keepdim=True)
+        self.labels = torch.randint(0, self.d, (self.N,))
     
     def test_initialization(self):
         """Test temperature scaling initialization."""
@@ -173,7 +169,7 @@ class TestTemperatureScaling:
         temp_scaler = TemperatureScaling(self.d)
         stats = temp_scaler.fit(
             self.ablated_probs, 
-            self.clean_probs, 
+            self.labels, 
             verbose=False,
             max_steps=10  # LBFGS converges quickly
         )
@@ -187,7 +183,7 @@ class TestTemperatureScaling:
         temp_scaler = TemperatureScaling(self.d)
         temp_scaler.fit(
             self.ablated_probs, 
-            self.clean_probs, 
+            self.labels, 
             verbose=False
         )
         
@@ -219,7 +215,7 @@ class TestUtilityFunctions:
     def test_get_expectation(self):
         """Test get_expectation function equivalent."""
         # Import utility functions
-        from mcal.utils.optimization import get_expectation, make_one_hot
+        from mcal.utils.optimization import get_expectation
         
         one_hot_exp, prob_exp = get_expectation(self.probs)
         

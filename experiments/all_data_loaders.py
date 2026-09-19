@@ -6,7 +6,6 @@ A single file containing all data loading functions with a consistent API.
 Just loads raw data - no models, no predictions, just data.
 """
 
-import sys
 from pathlib import Path
 import torch
 import torch.nn.functional as F

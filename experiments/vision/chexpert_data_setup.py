@@ -9,9 +9,7 @@ import torchvision.transforms as transforms
 
 import timm
 import torch
-import torch.nn as nn
 from tqdm.notebook import tqdm
-import sys
 from pathlib import Path
 
 #potential issues:
@@ -142,6 +140,7 @@ def chexpert_full_setup(train_dir='./CheXpert-v1.0-small/train', test_dir="./Che
             patch_size = kwargs.get('patch_size', 56)
             random_removal_fraction = kwargs.get('random_removal_fraction', False)
             random_dist = kwargs.get('random_dist', 'binomial')
+            fill_value = kwargs.get('fill_value', 0)
             test_transforms_list.insert(-1, PatchCutout(patch_height=patch_size, patch_width=patch_size, removal_fraction=removal_fraction, random_removal_fraction=random_removal_fraction, random_dist=random_dist, fill_val=fill_value))
 
         val_data = pd.read_csv("./CheXpert-v1.0-small/valid.csv")
@@ -229,7 +228,6 @@ def load_chexpert_data(model_type='vanilla', fill_value=0):
 
     # Balance the dataset using ChexPert's existing balanced approach
     from torch.utils.data import Subset
-    import numpy as np
 
     # Get all indices and labels from the dataset
     all_indices = list(range(len(train_dataset)))
@@ -313,7 +311,6 @@ def load_chexpert_data(model_type='vanilla', fill_value=0):
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    import numpy as np
     from pathlib import Path
     
     # Create output directory for saved images

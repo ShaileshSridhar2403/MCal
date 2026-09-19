@@ -5,10 +5,8 @@ Run Faithfulness, Deletion, and Insertion Experiments for MCal on BreakHis Datas
 BreakHis - Breast Cancer Histopathology Image Classification (8 classes)
 """
 
-import sys
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend

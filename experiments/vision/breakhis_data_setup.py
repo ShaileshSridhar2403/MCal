@@ -1,8 +1,6 @@
 # Create a wrapper function to safely apply PatchCutout
-import sys
 from pathlib import Path
 import torch
-import torch.nn as nn
 from tqdm.notebook import tqdm
 import timm
 
@@ -19,12 +17,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 
-from torch.utils.data import Dataset
 from torchvision import datasets
 import os
-from PIL import Image
 import shutil
-import subprocess
 import torchvision.transforms as transforms
 # from XAI_Benchmark.datasets.dataset_utils import kaggle_setup,balance_dataframe
 # from augmentation.Cutout import Cutout
@@ -164,7 +159,6 @@ def load_breakhis_data(model_type = "vanilla",fill_value=0):
 
     # Balance the dataset using the base loader method
     from torch.utils.data import Subset
-    import numpy as np
 
     # Get all indices and labels from the dataset
     all_indices = list(range(len(train_dataset)))
@@ -243,7 +237,6 @@ def load_breakhis_data(model_type = "vanilla",fill_value=0):
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    import numpy as np
     from pathlib import Path
     
     # Create output directory for saved images

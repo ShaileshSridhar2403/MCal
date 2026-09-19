@@ -8,13 +8,11 @@ but for language models with MedQA dataset and LLaMA predictions.
 Self-contained implementation - no XAI_Benchmark dependencies.
 """
 
-import sys
 import os
 import argparse
 from pathlib import Path
 import numpy as np
 import torch
-import torch.nn.functional as F
 from tqdm import tqdm
 import json
 from tabulate import tabulate
@@ -23,7 +21,7 @@ from tabulate import tabulate
 mcal_root = Path(__file__).parent.parent.parent
 
 # Import MCal utilities
-from mcal.utils.optimization import get_expectation, make_one_hot, kl_divergence
+from mcal.utils.optimization import get_expectation, kl_divergence
 
 # Import calibrator modules
 from mcal.calibrators.mcal import MCal
@@ -31,27 +29,22 @@ from mcal.paths import MODEL_ROOT
 from mcal.calibrators.mcal_ce import MCal_CE
 from experiments.mcal_ce_results import save_fit_summary, combine_fraction_results
 
-# Per-fraction and combined MCal_CE summaries are written here
-MCAL_CE_RESULTS_DIR = Path(__file__).parent / "results"
 from mcal.calibrators.platt import PlattCalibrator
 from mcal.calibrators.temperature import TemperatureScaling
 
 # Import transform modules for backward compatibility
-from mcal.transforms.lambda_transforms import ExpectationLambdaTransform, OptimizedLambdaTransform
-from mcal.transforms.logits import LogitsSharpTransform
 
 # Import our self-contained MedQA utilities
 from experiments.language.medqa_utils import (
     MCal_LLaMAModel,
     load_local_medqa_data,
-    load_real_medqa_data,
-    # load_synthetic_medqa_data,
     generate_fractionwise_predictions,
     generate_fractionwise_predictions_with_token_dropping,
     generate_fractionwise_predictions_with_attention_mask,
-    create_medqa_prompt,
-    map_probs_to_list
 )
+
+# Per-fraction and combined MCal_CE summaries are written here
+MCAL_CE_RESULTS_DIR = Path(__file__).parent / "results"
 
 
 def load_medqa_llama_model(model_path, device=None):
@@ -506,8 +499,7 @@ def load_medqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
             # First try local balanced data, then fall back to online/synthetic
             medqa_questions = load_local_medqa_data(n_samples, balanced=balanced)
         else:
-            print("Using synthetic MedQA data...")
-            medqa_questions = load_synthetic_medqa_data(n_samples)
+            raise NotImplementedError("Synthetic MedQA data is not included; run with use_real_data=True")
 
         # Generate predictions with different ablation fractions
         removal_fractions = np.linspace(0, 0.9, n_fractions).tolist()

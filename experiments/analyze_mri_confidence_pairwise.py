@@ -4,7 +4,6 @@ Analyze MRI Confidence Scores: Calibrated vs Uncalibrated
 Shows pairwise confidence comparison ranked by uncalibrated confidence
 """
 
-import sys
 import torch
 import torch.nn as nn
 import numpy as np

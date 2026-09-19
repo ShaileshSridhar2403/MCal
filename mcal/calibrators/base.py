@@ -32,7 +32,6 @@ class BaseCalibrator(nn.Module, ABC):
         Returns:
             Dictionary containing training statistics
         """
-        pass
     
     @abstractmethod
     def forward(self, probs: torch.Tensor) -> torch.Tensor:
@@ -44,7 +43,6 @@ class BaseCalibrator(nn.Module, ABC):
         Returns:
             Calibrated probability distributions of same shape
         """
-        pass
     
     def predict(self, probs: torch.Tensor) -> torch.Tensor:
         """Convenience method for forward pass.
