@@ -1,3 +1,4 @@
+# Modified for MCal: removed a debugger import. See vit_patch_drop/NOTICE.
 """ Vision Transformer (ViT) in PyTorch
 
 A PyTorch implement of Vision Transformers as described in

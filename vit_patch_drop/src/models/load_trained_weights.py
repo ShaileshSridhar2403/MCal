@@ -196,15 +196,20 @@ def run_inference_with_mask(model, input_tensor, patch_mask=None):
         _, pred = output.max(1)
         return output, pred.item()
 
-# Example usage
+# Example usage: python -m vit_patch_drop.src.models.load_trained_weights IMAGE [WEIGHTS]
 if __name__ == "__main__":
+    from mcal.paths import MODEL_ROOT
+
+    if len(sys.argv) < 2:
+        sys.exit("usage: python -m vit_patch_drop.src.models.load_trained_weights IMAGE [WEIGHTS]")
+    image_path = sys.argv[1]
+    weights_path = sys.argv[2] if len(sys.argv) > 2 else str(MODEL_ROOT / "vit_timm_standard_mri_ps64_35e.pth")
+
     # Load model
-    weights_path = "/home/shai2403/XAIbench/XAI_Benchmark/SavedModels/vit_timm_standard_mri_ps64_35e.pth"
     model, device = load_vit_model(weights_path)
     
     if model is not None:
         # Preprocess image
-        image_path = "/home/shai2403/XAIbench/XAI_Benchmark/output_image.png"
         input_tensor = preprocess_image(image_path, device)
         
         # Create different masks

@@ -1,0 +1,32 @@
+vit_patch_drop
+==============
+
+A Vision Transformer that can drop input patches, used by the vision
+benchmarks' arch_mod method (experiments/vision/vit_patch_drop_outputs.py).
+It is not part of the MIT-licensed mcal package.
+
+Origins
+-------
+
+src/models/vision_transformer.py, src/models/helpers.py, src/models/layers/
+    Derived from PyTorch Image Models (timm),
+    https://github.com/huggingface/pytorch-image-models
+    "Hacked together by / Copyright 2020 Ross Wightman".
+    Licensed under the Apache License, Version 2.0; see LICENSE in this
+    directory.
+
+Patch-dropping changes to those files
+    Taken from https://github.com/madrylab/missingness, the code for
+    Jain et al., "Missingness Bias in Model Debugging", ICLR 2022.
+    That repository does not publish a licence.
+
+src/models/load_trained_weights.py
+    Written for MCal.
+
+Changes made here
+-----------------
+
+Relative to madrylab/missingness, this copy removes the unused config
+package (src/config/), the ResNet model (src/models/resnet.py), the
+model-building helpers in src/models/__init__.py, and a debugger import
+in src/models/vision_transformer.py.
