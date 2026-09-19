@@ -7,11 +7,10 @@ from pathlib import Path
 import torch
 import matplotlib.pyplot as plt
 
-# Add MCal to path
-mcal_root = Path(__file__).parent.parent.parent
 
 from mcal.data.loaders import MRILoader
 from mcal.data.augmentation.patch_cutout import PatchCutout
+from mcal.paths import DATA_ROOT
 
 def ablate_and_save():
     """Ablate single image with two different fill values and save as PNG."""
@@ -19,7 +18,7 @@ def ablate_and_save():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Load data like notebook_data_loader
-    data_dir = mcal_root / "data"
+    data_dir = DATA_ROOT
     mri_loader = MRILoader(data_dir=data_dir)
     _, test_dataset_clean, _ = mri_loader.setup_dataset()
     

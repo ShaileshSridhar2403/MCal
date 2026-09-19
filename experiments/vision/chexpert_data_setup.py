@@ -16,13 +16,17 @@ from pathlib import Path
 #data is not balanced
 #we were previously using train data for table results and now using test data
 
-project_root = Path().absolute().parent.parent
 
 
 from mcal.configs.dataset_configs import get_dataset_config
 from mcal.data.augmentation.patch_cutout import PatchCutout
 from mcal.data.loaders import ChexPertLoader
 from mcal.configs.model_dict import get_model_path
+from mcal.paths import DATA_ROOT
+
+# CheXpert is expected next to this script, where the benchmarks have always read it
+VISION_DIR = Path(__file__).resolve().parent
+CHEXPERT_DIR = VISION_DIR / "CheXpert-v1.0-small"
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -41,13 +45,16 @@ def balance_dataframe(df,task,n = None):
 
 
 def download_and_unpack_chexpert_dataset():
-    #takes ~5 min
-    logs = subprocess.run("kaggle datasets download -d willarevalo/chexpert-v10-small".split())
-    print(logs)
-    shutil.unpack_archive("chexpert-v10-small.zip", ".")
-    print("Downloaded and Unpacked dataset")
+    """CheXpert is not downloaded automatically.
 
-
+    Its research-use agreement requires registering with Stanford, so the
+    dataset must be obtained from https://stanfordaimi.azurewebsites.net/
+    and unpacked so that CHEXPERT_DIR contains train.csv, valid.csv, train/
+    and valid/.
+    """
+    raise FileNotFoundError(
+        f"CheXpert-v1.0-small not found at {CHEXPERT_DIR}. Request access at "
+        "https://stanfordaimi.azurewebsites.net/ and unpack it there; see docs/datasets.md.")
 
 class ChestXrayDataset(Dataset):
 
@@ -98,7 +105,7 @@ class ChestXrayDataset(Dataset):
         return image_data, self.image_labels[index]
 
 
-def chexpert_full_setup(train_dir='./CheXpert-v1.0-small/train', test_dir="./CheXpert-v1.0-small/valid", n_examples=None, train_augmentation=None, test_augmentation=None, **kwargs):
+def chexpert_full_setup(train_dir=str(CHEXPERT_DIR / "train"), test_dir=str(CHEXPERT_DIR / "valid"), n_examples=None, train_augmentation=None, test_augmentation=None, **kwargs):
     train_dataset = None
     test_dataset = None
 
@@ -117,8 +124,8 @@ def chexpert_full_setup(train_dir='./CheXpert-v1.0-small/train', test_dir="./Che
             # transforms.Normalize(mean=[0.5013, 0.5013, 0.5013], std=[0.2908, 0.2908, 0.2908])
         ]
 
-        train_data = pd.read_csv("./CheXpert-v1.0-small/train.csv")
-        train_dataset = ChestXrayDataset(".", train_data, 224, True, max_n=3000,
+        train_data = pd.read_csv(CHEXPERT_DIR / "train.csv")
+        train_dataset = ChestXrayDataset(str(VISION_DIR), train_data, 224, True, max_n=3000,
                                          transform=transforms.Compose(train_transforms_list))
 
     if test_dir is not None:
@@ -143,8 +150,8 @@ def chexpert_full_setup(train_dir='./CheXpert-v1.0-small/train', test_dir="./Che
             fill_value = kwargs.get('fill_value', 0)
             test_transforms_list.insert(-1, PatchCutout(patch_height=patch_size, patch_width=patch_size, removal_fraction=removal_fraction, random_removal_fraction=random_removal_fraction, random_dist=random_dist, fill_val=fill_value))
 
-        val_data = pd.read_csv("./CheXpert-v1.0-small/valid.csv")
-        test_dataset = ChestXrayDataset(".", val_data, 224, True,
+        val_data = pd.read_csv(CHEXPERT_DIR / "valid.csv")
+        test_dataset = ChestXrayDataset(str(VISION_DIR), val_data, 224, True,
                                         transform=transforms.Compose(test_transforms_list))
 
     return train_dataset, test_dataset
@@ -212,7 +219,7 @@ def load_chexpert_data(model_type='vanilla', fill_value=0):
 
     # Initialize chexpert data loader
     print("🧠 Loading chexpert test dataset...")
-    data_dir = project_root / "data"
+    data_dir = DATA_ROOT
     chexpert_loader = ChexPertLoader(data_dir=data_dir)
 
     # Load clean test dataset (no augmentation)
@@ -323,7 +330,7 @@ if __name__ == "__main__":
     chexpert_config = get_dataset_config('chexpert')
     
     # Initialize chexpert data loader
-    data_dir = project_root / "data"
+    data_dir = DATA_ROOT
     chexpert_loader = ChexPertLoader(data_dir=data_dir)
 
     # Load clean test dataset

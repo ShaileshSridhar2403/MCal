@@ -139,7 +139,7 @@ def main():
         sys.exit(1)
 
     # Set output directory
-    output_dir = Path("experiments/vision/data")
+    output_dir = Path(__file__).resolve().parent / "experiments" / "vision" / "data"
     print(f"\n2. Dataset will be downloaded to: {output_dir.absolute()}")
 
     # Check if already exists

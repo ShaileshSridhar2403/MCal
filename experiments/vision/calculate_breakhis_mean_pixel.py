@@ -10,12 +10,11 @@ from pathlib import Path
 import torch
 from tqdm import tqdm
 
-# Add MCal to path
-mcal_root = Path(__file__).parent.parent.parent
 
 # Import MCal data loaders
 from mcal.data.loaders import BreakHisLoader
 from experiments.vision.breakhis_data_setup import BreakHis_full_setup
+from mcal.paths import DATA_ROOT
 
 def calculate_breakhis_mean_pixel_values():
     """Calculate mean pixel values for the BreakHis training dataset.
@@ -26,7 +25,7 @@ def calculate_breakhis_mean_pixel_values():
 
     # Load BreakHis training dataset
     print("Loading BreakHis training dataset...")
-    data_dir = mcal_root / "data"
+    data_dir = DATA_ROOT
     breakhis_loader = BreakHisLoader(data_dir=data_dir)
 
     # Load training dataset

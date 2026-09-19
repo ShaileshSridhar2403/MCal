@@ -25,6 +25,7 @@ from trl import SFTConfig, SFTTrainer
 experiments_root = Path(__file__).parent.parent
 
 from experiments.all_data_loaders import load_medqa_ablated_prob, load_medmcqa_ablated_prob, tokenize_and_mask_medqa, tokenize_and_mask_medmcqa
+from mcal.paths import MODEL_ROOT
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -170,7 +171,7 @@ if __name__ == "__main__":
     
     # Model args
     parser.add_argument("--base_model", type=str, default="meta-llama/Meta-Llama-3-8B")
-    parser.add_argument("--output_dir", type=str, default=str(Path(__file__).parent.parent.parent / "saved_models"))
+    parser.add_argument("--output_dir", type=str, default=str(MODEL_ROOT))
     
     # Training args
     parser.add_argument("--num_epochs", type=int, default=1)

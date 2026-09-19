@@ -4,8 +4,6 @@ import torch
 from tqdm.notebook import tqdm
 import timm
 
-# Add project root to path
-project_root = Path().absolute().parent.parent
 
 # Import MCal components
 from mcal.data.loaders import BreakHisLoader
@@ -21,24 +19,28 @@ from torchvision import datasets
 import os
 import shutil
 import torchvision.transforms as transforms
+from mcal.paths import DATA_ROOT
+
+# Folder this script lives in; the BreakHis copy it trains on is under data/ here
+VISION_DIR = Path(__file__).resolve().parent
 # from XAI_Benchmark.datasets.dataset_utils import kaggle_setup,balance_dataframe
 # from augmentation.Cutout import Cutout
 # from augmentation.PatchCutout import PatchCutout
 
 
-def BreakHis_full_setup(train_dir='./data/BreakHis/BreakHisTraining/', test_dir="./data/BreakHis/BreakHisTesting/", n_examples=None, train_augmentation=None, test_augmentation=None, **kwargs):
+def BreakHis_full_setup(train_dir=str(VISION_DIR / "data" / "BreakHis" / "BreakHisTraining"), test_dir=str(VISION_DIR / "data" / "BreakHis" / "BreakHisTesting"), n_examples=None, train_augmentation=None, test_augmentation=None, **kwargs):
     train_dataset = None
     test_dataset = None
 
     if train_dir is not None:
         if not os.path.exists(train_dir):
             print(f"Dataset not found at {train_dir}, setting it up..")
-            drive_path = kwargs.get("drive_path", "/home/antonxue/shailesh/MCal/data/BreakHis/dataset_v2.zip")
-            shutil.copy(drive_path, ".")
-            shutil.unpack_archive("./dataset_v2.zip", ".")
-            shutil.move("./dataset_v2/train", train_dir)
+            drive_path = kwargs.get("drive_path", str(DATA_ROOT / "BreakHis" / "dataset_v2.zip"))
+            shutil.copy(drive_path, VISION_DIR)
+            shutil.unpack_archive(VISION_DIR / "dataset_v2.zip", VISION_DIR)
+            shutil.move(VISION_DIR / "dataset_v2" / "train", train_dir)
             if test_dir is not None:
-                shutil.move("./dataset_v2/test", test_dir)
+                shutil.move(VISION_DIR / "dataset_v2" / "test", test_dir)
         else:
             print(f"Dataset already present at {train_dir}")
 
@@ -63,11 +65,11 @@ def BreakHis_full_setup(train_dir='./data/BreakHis/BreakHisTraining/', test_dir=
     if test_dir is not None:
         if not os.path.exists(test_dir):
             print(f"Test dataset not found at {test_dir}, setting it up..")
-            if not os.path.exists("./data/BreakHis/dataset_v2.zip"):
-                drive_path = kwargs.get("drive_path", "/home/antonxue/shailesh/MCal/data/BreakHis/dataset_v2.zip")
-                shutil.copy(drive_path, ".")
-                shutil.unpack_archive("./dataset_v2.zip", ".")
-            shutil.move("./dataset_v2/test", test_dir)
+            if not os.path.exists(VISION_DIR / "data" / "BreakHis" / "dataset_v2.zip"):
+                drive_path = kwargs.get("drive_path", str(DATA_ROOT / "BreakHis" / "dataset_v2.zip"))
+                shutil.copy(drive_path, VISION_DIR)
+                shutil.unpack_archive(VISION_DIR / "dataset_v2.zip", VISION_DIR)
+            shutil.move(VISION_DIR / "dataset_v2" / "test", test_dir)
         else:
             print(f"Test dataset already present at {test_dir}")
 
@@ -144,7 +146,7 @@ def load_breakhis_data(model_type = "vanilla",fill_value=0):
 
     # Initialize BreakHis data loader
     print("🧠 Loading BreakHis train dataset...")
-    data_dir = project_root / "data"
+    data_dir = DATA_ROOT
     breakhis_loader = BreakHisLoader(data_dir=data_dir)
 
     # Load clean test dataset (no augmentation)
@@ -249,7 +251,7 @@ if __name__ == "__main__":
     breakhis_config = get_dataset_config('breakhis')
     
     # Initialize BreakHis data loader
-    data_dir = project_root / "data"
+    data_dir = DATA_ROOT
     breakhis_loader = BreakHisLoader(data_dir=data_dir)
     
     # Load clean test dataset

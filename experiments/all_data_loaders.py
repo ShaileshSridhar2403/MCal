@@ -21,13 +21,12 @@ import datasets as huggingface_datasets
 from transformers import AutoTokenizer
 
 
-# Add project to path
-PROJECT_ROOT = Path(__file__).parent.parent
-
 from mcal.data.augmentation.patch_cutout import PatchCutout
+from mcal.paths import DATA_ROOT
 
-# Default data directory
-DATA_ROOT = PROJECT_ROOT / "data"
+# Repository root; a few loaders read data kept inside the checkout
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 
 
 # =============================================================================
@@ -770,8 +769,8 @@ def load_ctg_clean(split='test', n_samples=None):
         y: Labels as numpy array (n_samples,)
     """
     # Load CTG features and targets
-    features_file = PROJECT_ROOT / 'experiments' / 'data' / 'ctg_features.csv'
-    targets_file = PROJECT_ROOT / 'experiments' / 'data' / 'ctg_targets.csv'
+    features_file = Path(__file__).parent / 'data' / 'ctg_features.csv'
+    targets_file = Path(__file__).parent / 'data' / 'ctg_targets.csv'
 
     if not features_file.exists() or not targets_file.exists():
         raise FileNotFoundError(f"CTG data files not found at {features_file.parent}")

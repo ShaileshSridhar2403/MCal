@@ -7,12 +7,12 @@ from pathlib import Path
 
 # Add necessary paths to import modules
 current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = Path(current_dir).parent.parent
 
 # Import required modules
 from vit_patch_drop.src.models.load_trained_weights import load_vit_model, create_patch_mask
 from mcal.configs.model_dict import get_model_path
 from mcal.data.loaders import MRILoader, BreakHisLoader, ChexPertLoader
+from mcal.paths import DATA_ROOT
 
 
 
@@ -51,7 +51,7 @@ def get_patch_drop_outputs(dataset_name, device, batch_size=32, num_classes=None
         raise ValueError("Model loading failed")
     
     # 2. Load dataset
-    data_dir = project_root / "data"
+    data_dir = DATA_ROOT
     
     if dataset_name == "mri":
         mri_loader = MRILoader(data_dir=data_dir)

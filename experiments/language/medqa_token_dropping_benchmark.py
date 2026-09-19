@@ -23,6 +23,7 @@ from experiments.language.medqa_utils import (
     load_local_medqa_data,
     generate_fractionwise_predictions_with_token_dropping
 )
+from mcal.paths import MODEL_ROOT
 
 def calculate_kl_divergence(outputs, uniform_dist=None):
     """Calculate KL divergence from uniform distribution."""
@@ -193,7 +194,7 @@ def main():
     parser.add_argument('--samples', type=int, default=10, help='Number of samples to use')
     parser.add_argument('--fractions', type=int, default=5, help='Number of removal fractions to test')
     parser.add_argument('--model-path', type=str,
-                       default='/home/antonxue/shailesh/MCal/saved_models/language/Meta-Llama-3-8B-Instruct',
+                       default=str(MODEL_ROOT / "language" / "Meta-Llama-3-8B-Instruct"),
                        help='Path to LLaMA model')
     parser.add_argument('--batch-size', type=int, default=4, help='Batch size for processing')
     parser.add_argument('--prompt-type', type=str, default='default',

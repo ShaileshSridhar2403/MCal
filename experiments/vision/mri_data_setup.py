@@ -4,14 +4,13 @@ import torch
 from tqdm.notebook import tqdm
 import timm
 
-# Add project root to path
-project_root = Path(__file__).parent.parent.parent
 
 # Import MCal components
 from mcal.data.loaders import MRILoader
 from mcal.data.augmentation.patch_cutout import PatchCutout
 from mcal.configs.model_dict import get_model_path
 from mcal.configs.dataset_configs import get_dataset_config
+from mcal.paths import DATA_ROOT
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
@@ -70,7 +69,7 @@ def load_mri_data(model_type = "vanilla",fill_value=0):
 
     # Initialize MRI data loader
     print("🧠 Loading MRI test dataset...")
-    data_dir = project_root / "data"
+    data_dir = DATA_ROOT
     mri_loader = MRILoader(data_dir=data_dir)
 
     # Load clean test dataset (no augmentation)
@@ -219,7 +218,7 @@ def load_mri_data_binomial(model_type = "vanilla",fill_value=0):
 
     # Initialize MRI data loader
     print("🧠 Loading MRI test dataset...")
-    data_dir = project_root / "data"
+    data_dir = DATA_ROOT
     mri_loader = MRILoader(data_dir=data_dir)
 
     # Load clean test dataset (no augmentation)
@@ -335,7 +334,7 @@ if __name__ == "__main__":
     mri_config = get_dataset_config('mri')
     
     # Initialize MRI data loader
-    data_dir = project_root / "data"
+    data_dir = DATA_ROOT
     mri_loader = MRILoader(data_dir=data_dir)
     
     # Load clean test dataset

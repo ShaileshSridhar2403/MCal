@@ -11,10 +11,9 @@ import argparse
 import logging
 import torch
 
-# Add project paths
-project_root = Path(__file__).parent
 
 from mcal.data.loaders.vision_loaders import MRILoader
+from mcal.paths import DATA_ROOT
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -171,7 +170,7 @@ def main():
     
     # Set default data directory if not provided
     if args.data_dir is None:
-        args.data_dir = project_root / "data"
+        args.data_dir = DATA_ROOT
     
     print(f"🧠 Testing MRILoader with:")
     print(f"   Data directory: {args.data_dir}")

@@ -16,6 +16,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.utils import resample
 from tqdm import tqdm
 import xgboost as xgb
+from mcal.paths import DATA_ROOT
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent.parent
@@ -168,7 +169,7 @@ def apply_missing_data_simulation(data, removal_fraction):
 
 
 def load_physionet_data(model_type="vanilla", fill_value="mean", n_samples=1000, n_fractions=10,
-                       missingness_dir=str(Path(__file__).parent.parent.parent / "data" / "tabular" / "missingness_levels"),
+                       missingness_dir=str(DATA_ROOT / "tabular" / "missingness_levels"),
                        missing_value=None):
     """
     Simple, clean PhysioNet data loading following MRI pattern.

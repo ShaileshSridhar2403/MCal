@@ -11,6 +11,7 @@ from torch.utils.data import Dataset
 from torchvision import datasets
 
 from .base_loader import VisionDataLoader
+from ...paths import DATA_ROOT
 
 
 
@@ -145,7 +146,7 @@ class BreakHisLoader(VisionDataLoader):
                 "./datasets/dataset_v2.zip",
                 "../datasets/dataset_v2.zip",
                 "../../datasets/dataset_v2.zip",
-                "/home/antonxue/shailesh/MCal/data/BreakHis/dataset_v2.zip",
+                str(DATA_ROOT / "BreakHis" / "dataset_v2.zip"),
                 "./data/BreakHis/dataset_v2.zip"
             ]
             

@@ -159,32 +159,19 @@ SHAP is slower but provides stronger theoretical guarantees.
 - SHAP: ~880 seconds (~15 minutes)
 - Plus metrics computation and visualization
 
-## Practical Implications
-
-For the paper/rebuttal:
-
-1. **Methodological strength**: Using both LIME and SHAP shows MCal's benefits are not specific to one explanation method
-
-2. **Theoretical support**: SHAP's game-theoretic foundation provides stronger claims about MCal improving "true" feature importance
-
-3. **Reviewer response**: If reviewers prefer SHAP over LIME (or vice versa), you have results for both
-
-4. **Consistency check**: If both methods show improvements, this strengthens the claim that MCal produces better explanations
-
 ## Code Location
 
-- Implementation: `experiments/explanations.py`
-  - `ImageLIME` (lines 65-206)
-  - `ImageKernelSHAP` (lines 209-370)
+- Implementation: `experiments/explanations.py` (`ImageLIME`, `ImageKernelSHAP`)
 
-- Experiment script: `experiments/run_faithfulness_experiments.py`
+- Experiment: `python -m experiments.run_faithfulness --dataset mri`
+  (code in `experiments/faithfulness/mri.py`)
   - Generates both LIME and SHAP explanations
   - Computes metrics for both
   - Creates separate visualizations
 
-- Results will be saved to:
-  - `results/mri_faithfulness_results_lime.csv`
-  - `results/mri_faithfulness_results_shap.csv`
+- Results are saved to:
+  - `experiments/results/mri_faithfulness_results_lime.csv`
+  - `experiments/results/mri_faithfulness_results_shap.csv`
 
 ## References
 

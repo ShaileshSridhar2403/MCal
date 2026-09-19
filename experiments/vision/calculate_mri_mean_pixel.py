@@ -10,11 +10,10 @@ from pathlib import Path
 import torch
 from tqdm import tqdm
 
-# Add MCal to path
-mcal_root = Path(__file__).parent.parent.parent
 
 # Import MCal data loaders
 from mcal.data.loaders import MRILoader
+from mcal.paths import DATA_ROOT
 
 def calculate_mri_mean_pixel_values():
     """Calculate mean pixel values for the MRI training dataset.
@@ -25,7 +24,7 @@ def calculate_mri_mean_pixel_values():
     
     # Load MRI training dataset
     print("Loading MRI training dataset...")
-    data_dir = mcal_root / "data"
+    data_dir = DATA_ROOT
     mri_loader = MRILoader(data_dir=data_dir)
     
     # Load training dataset

@@ -9,7 +9,10 @@ export CUDA_HOME=$CONDA_PREFIX
 export ACCELERATE_USE_DEEPSPEED=true
 
 # Optional: Set other useful environment variables
-export PYTHONPATH="${PYTHONPATH}:$(pwd)/.."
+# Run from the repository root so experiments.* and mcal.* import
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "${REPO_ROOT}"
+export PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 export TOKENIZERS_PARALLELISM=false  # Avoid tokenizer warnings in multi-process
 
 # Print environment info

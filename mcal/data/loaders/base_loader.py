@@ -9,6 +9,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 import logging
+from ...paths import DATA_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class BaseDataLoader(ABC):
             cache_dir: Directory for caching processed data
             seed: Random seed for reproducibility
         """
-        self.data_dir = Path(data_dir) if data_dir else Path("./data")
+        self.data_dir = Path(data_dir) if data_dir else DATA_ROOT
         self.cache_dir = Path(cache_dir) if cache_dir else self.data_dir / "cache"
         self.seed = seed
         

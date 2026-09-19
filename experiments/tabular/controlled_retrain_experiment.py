@@ -23,6 +23,7 @@ from sklearn.metrics import roc_auc_score
 from pathlib import Path
 import pickle
 import warnings
+from mcal.paths import DATA_ROOT
 
 # Suppress warnings
 warnings.filterwarnings('ignore')
@@ -35,7 +36,7 @@ class ControlledRetrainExperiment:
     Controlled experiment comparing MCal_CE vs retrain on PhysioNet data.
     """
 
-    def __init__(self, missingness_dir="/home/antonxue/shailesh/MCal/data/tabular/missingness_levels",
+    def __init__(self, missingness_dir=str(DATA_ROOT / "tabular" / "missingness_levels"),
                  device="cuda", random_state=42):
         """
         Initialize the experiment.

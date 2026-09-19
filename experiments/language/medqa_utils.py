@@ -14,6 +14,7 @@ import os
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from tqdm import tqdm
 import torch.nn.functional as F
+from mcal.paths import DATA_ROOT
 
 # ===== TEXT ABLATION UTILITIES =====
 
@@ -480,7 +481,7 @@ def generate_fractionwise_predictions_with_attention_mask(
 def load_local_medqa_data(n_samples=10, balanced=True):
     """Load MedQA dataset from local files following XAI-Benchmark pattern."""
     # Try to load from local balanced file first
-    balanced_file_path = "data/language/medqa_dev_balanced.jsonl"
+    balanced_file_path = str(DATA_ROOT / "language" / "medqa_dev_balanced.jsonl")
 
     if not os.path.exists(balanced_file_path):
         raise FileNotFoundError(

@@ -16,6 +16,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.utils import resample
 from tqdm import tqdm
 import xgboost as xgb
+from mcal.paths import DATA_ROOT
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent.parent
@@ -182,7 +183,7 @@ def apply_missing_data_simulation(data, removal_fraction):
 
 
 def load_ctg_data(model_type="vanilla", fill_value="mean", n_samples=1000, n_fractions=10,
-                  data_path="/home/antonxue/shailesh/MCal/data/tabular/ctg/ctg_dataset.csv",
+                  data_path=str(DATA_ROOT / "tabular" / "ctg" / "ctg_dataset.csv"),
                   missing_value=None):
     """
     Simple, clean CTG data loading following PhysioNet pattern.
