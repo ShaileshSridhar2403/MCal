@@ -99,8 +99,8 @@ echo "----------------------------------------------------------------------"
 echo "[6/8] Running PhysioNet benchmark..."
 echo "----------------------------------------------------------------------"
 python -m experiments.tabular.physionet_kl_benchmark \
-    --methods baseline replace_mean temperature platt mcal_ce arch_mod retrain \
-    --runs 10
+    --methods baseline replace temperature platt mcal_ce archmod retrain \
+    --n_runs 10
 echo "✓ PhysioNet completed"
 echo ""
 
@@ -109,8 +109,8 @@ echo "----------------------------------------------------------------------"
 echo "[7/8] Running Breast Cancer benchmark..."
 echo "----------------------------------------------------------------------"
 python -m experiments.tabular.breast_cancer_kl_benchmark \
-    --methods baseline replace_mean temperature platt mcal_ce arch_mod retrain \
-    --runs 10
+    --methods baseline replace temperature platt mcal_ce archmod retrain \
+    --n_runs 10
 echo "✓ Breast Cancer completed"
 echo ""
 
@@ -119,8 +119,8 @@ echo "----------------------------------------------------------------------"
 echo "[8/8] Running Cardiotocography (CTG) benchmark..."
 echo "----------------------------------------------------------------------"
 python -m experiments.tabular.ctg_kl_benchmark \
-    --methods baseline replace_mean temperature platt mcal_ce arch_mod retrain \
-    --runs 10
+    --methods baseline replace temperature platt mcal_ce archmod retrain \
+    --n_runs 10
 echo "✓ CTG completed"
 echo ""
 
