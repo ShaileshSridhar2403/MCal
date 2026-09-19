@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Run Faithfulness, Deletion, and Insertion Experiments for MCal on CTG Dataset
+Run Faithfulness, Deletion, and Insertion Experiments for MCal on PhysioNet Dataset
 
-CTG (Cardiotocography) - Multi-class classification (3 classes: Normal, Suspect, Pathologic)
+PhysioNet - Binary classification (ICU mortality prediction)
 """
 
 import sys
@@ -31,8 +31,8 @@ plt.rcParams['figure.dpi'] = 100
 # Import MCal components
 from mcal.calibrators.mcal_ce import SimpleMCalCE
 
-# Import CTG data loader
-from experiments.all_data_loaders import load_ctg_clean
+# Import PhysioNet data loader
+from experiments.all_data_loaders import load_physionet_clean
 
 # Import new faithfulness metrics
 from experiments.faithfulness_metrics import (
@@ -61,28 +61,28 @@ config = {
 }
 
 print("\n" + "="*70)
-print("FAITHFULNESS EXPERIMENTS FOR MCAL - CTG DATASET")
+print("FAITHFULNESS EXPERIMENTS FOR MCAL - PHYSIONET DATASET")
 print("="*70)
 print("\nConfiguration:")
 for k, v in config.items():
     print(f"  {k}: {v}")
 
 # ============================================================================
-# Load CTG Dataset
+# Load PhysioNet Dataset
 # ============================================================================
 print("\n" + "="*70)
-print("1. LOADING CTG DATASET")
+print("1. LOADING PHYSIONET DATASET")
 print("="*70)
 
 # Load dataset
-X_train_full, y_train_full = load_ctg_clean('train')
-X_test_full, y_test_full = load_ctg_clean('test')
+X_train_full, y_train_full = load_physionet_clean('train')
+X_test_full, y_test_full = load_physionet_clean('test')
 
-print(f"Dataset: Cardiotocography (CTG) - Fetal Heart Rate Classification")
+print(f"Dataset: PhysioNet Challenge - ICU Mortality Prediction")
 print(f"Total training samples: {len(X_train_full)}")
 print(f"Total test samples: {len(X_test_full)}")
 print(f"Features: {X_train_full.shape[1]}")
-print(f"Classes: 3 (0=Normal, 1=Suspect, 2=Pathologic)")
+print(f"Classes: 2 (0=Survival, 1=Death)")
 print(f"Training class distribution: {np.bincount(y_train_full)}")
 print(f"Test class distribution: {np.bincount(y_test_full)}")
 
@@ -109,9 +109,7 @@ base_model = xgb.XGBClassifier(
     max_depth=config['xgb_max_depth'],
     learning_rate=config['xgb_learning_rate'],
     random_state=42,
-    eval_metric='mlogloss',  # Multi-class log loss
-    objective='multi:softprob',  # Multi-class classification
-    num_class=3
+    eval_metric='logloss'
 )
 
 base_model.fit(X_train, y_train, verbose=False)
@@ -150,7 +148,7 @@ train_labels_tensor = torch.tensor(y_train).long().to(device)
 
 # Train MCal
 print("\nTraining MCal calibrator...")
-n_classes = 3  # CTG has 3 classes
+n_classes = len(np.unique(y_train))
 calibrator = SimpleMCalCE(num_classes=n_classes).to(device)
 stats = calibrator.fit(
     ablated_logits=ablated_logits,
@@ -186,45 +184,43 @@ calib_model = CalibratedTabularModel(base_model, calibrator, device)
 print("✓ Created calibrated model")
 
 # ============================================================================
-# Generate SHAP Explanations
+# Generate SHAP Explanations (using KernelExplainer for BOTH)
 # ============================================================================
 print("\n" + "="*70)
 print("4. GENERATING SHAP EXPLANATIONS")
 print("="*70)
 
-# Use a subset of training data as background for SHAP
-background_size = min(50, len(X_train))
+print("🔧 USING KERNELEXPLAINER FOR BOTH MODELS (fair comparison)...")
+print("   Same explanation method for uncalibrated and calibrated models")
+
+# Create background dataset for KernelExplainer
+background_size = min(100, len(X_train))
 X_background = shap.sample(X_train, background_size)
 
-print(f"Creating SHAP explainers (background size: {background_size})...")
-print("Note: For multi-class CTG, we'll explain the predicted class probability")
+print(f"Creating KernelExplainer for both models (background: {background_size})...")
+nsamples = 500  # Increased samples for better explanations
 
-# Generate SHAP values for each test sample based on its predicted class
+# Generate SHAP values
+print(f"Computing SHAP values for test samples (nsamples={nsamples})...")
 uncal_shap_values = []
 calib_shap_values = []
 
-print("Computing SHAP values for test samples...")
 for i in tqdm(range(len(X_test)), desc="SHAP explanations"):
     instance = X_test[i:i+1]
 
-    # Get predicted classes
-    uncal_pred_class = base_model.predict(instance)[0]
-    calib_pred_class = np.argmax(calib_model.predict_proba(instance), axis=1)[0]
-
-    # Create explainers for predicted class
+    # KernelExplainer for uncalibrated
     explainer_uncal = shap.KernelExplainer(
-        lambda x: base_model.predict_proba(x)[:, uncal_pred_class],
+        lambda x: base_model.predict_proba(x)[:, 1],  # Explain class 1 (death)
         X_background
     )
+    shap_uncal = explainer_uncal.shap_values(instance, nsamples=nsamples, silent=True)
 
+    # KernelExplainer for calibrated
     explainer_calib = shap.KernelExplainer(
-        lambda x: calib_model.predict_proba(x)[:, calib_pred_class],
+        lambda x: calib_model.predict_proba(x)[:, 1],  # Explain class 1 (death)
         X_background
     )
-
-    # Get SHAP values
-    shap_uncal = explainer_uncal.shap_values(instance, nsamples=100, silent=True)
-    shap_calib = explainer_calib.shap_values(instance, nsamples=100, silent=True)
+    shap_calib = explainer_calib.shap_values(instance, nsamples=nsamples, silent=True)
 
     uncal_shap_values.append(shap_uncal[0])
     calib_shap_values.append(shap_calib[0])
@@ -326,7 +322,7 @@ for i in range(len(summary)):
 summary['Improvement'] = improvements
 
 print("\n" + "="*70)
-print(f"CTG RESULTS (averaged over {len(X_test)} test samples)")
+print(f"PHYSIONET RESULTS (averaged over {len(X_test)} test samples)")
 print("="*70)
 print(summary.to_string(index=False))
 print("="*70)
@@ -338,7 +334,7 @@ print("\n" + "="*70)
 print("7. CREATING VISUALIZATIONS")
 print("="*70)
 
-output_dir = Path('results')
+output_dir = Path(__file__).resolve().parents[1] / 'results'
 output_dir.mkdir(exist_ok=True)
 
 # Deletion Curves
@@ -357,14 +353,14 @@ ax.plot(avg_fracs, avg_uncal, color='steelblue', linewidth=3, label='Uncalibrate
 ax.plot(avg_fracs, avg_cal, color='darkorange', linewidth=3, label='MCal Calibrated', marker='s')
 
 ax.set_xlabel('Fraction of Features Deleted', fontsize=12)
-ax.set_ylabel('Prediction Score (Predicted Class)', fontsize=12)
-ax.set_title('CTG: Deletion Curves (MCal vs Uncalibrated)', fontsize=14, fontweight='bold')
+ax.set_ylabel('Prediction Score (Death Probability)', fontsize=12)
+ax.set_title('PhysioNet: Deletion Curves (MCal vs Uncalibrated)', fontsize=14, fontweight='bold')
 ax.legend(fontsize=11)
 ax.grid(alpha=0.3)
 
 plt.tight_layout()
-plt.savefig(output_dir / 'ctg_deletion_curves.pdf', dpi=300, bbox_inches='tight')
-plt.savefig(output_dir / 'ctg_deletion_curves.png', dpi=150, bbox_inches='tight')
+plt.savefig(output_dir / 'physionet_deletion_curves.pdf', dpi=300, bbox_inches='tight')
+plt.savefig(output_dir / 'physionet_deletion_curves.png', dpi=150, bbox_inches='tight')
 plt.close()
 print("✓ Saved deletion curves")
 
@@ -384,14 +380,14 @@ ax.plot(avg_fracs, avg_uncal, color='steelblue', linewidth=3, label='Uncalibrate
 ax.plot(avg_fracs, avg_cal, color='darkorange', linewidth=3, label='MCal Calibrated', marker='s')
 
 ax.set_xlabel('Fraction of Features Inserted', fontsize=12)
-ax.set_ylabel('Prediction Score (Predicted Class)', fontsize=12)
-ax.set_title('CTG: Insertion Curves (MCal vs Uncalibrated)', fontsize=14, fontweight='bold')
+ax.set_ylabel('Prediction Score (Death Probability)', fontsize=12)
+ax.set_title('PhysioNet: Insertion Curves (MCal vs Uncalibrated)', fontsize=14, fontweight='bold')
 ax.legend(fontsize=11)
 ax.grid(alpha=0.3)
 
 plt.tight_layout()
-plt.savefig(output_dir / 'ctg_insertion_curves.pdf', dpi=300, bbox_inches='tight')
-plt.savefig(output_dir / 'ctg_insertion_curves.png', dpi=150, bbox_inches='tight')
+plt.savefig(output_dir / 'physionet_insertion_curves.pdf', dpi=300, bbox_inches='tight')
+plt.savefig(output_dir / 'physionet_insertion_curves.png', dpi=150, bbox_inches='tight')
 plt.close()
 print("✓ Saved insertion curves")
 
@@ -417,7 +413,7 @@ bars1 = ax.bar(x - width/2, uncal_vals, width, label='Uncalibrated', color='stee
 bars2 = ax.bar(x + width/2, cal_vals, width, label='MCal Calibrated', color='darkorange')
 
 ax.set_ylabel('Score', fontsize=13)
-ax.set_title('CTG: Faithfulness Metrics Comparison', fontsize=15, fontweight='bold')
+ax.set_title('PhysioNet: Faithfulness Metrics Comparison', fontsize=15, fontweight='bold')
 ax.set_xticks(x)
 ax.set_xticklabels(metrics, fontsize=11)
 ax.legend(fontsize=11)
@@ -432,8 +428,8 @@ for bars in [bars1, bars2]:
                 ha='center', va='bottom', fontsize=10)
 
 plt.tight_layout()
-plt.savefig(output_dir / 'ctg_faithfulness_comparison.pdf', dpi=300, bbox_inches='tight')
-plt.savefig(output_dir / 'ctg_faithfulness_comparison.png', dpi=150, bbox_inches='tight')
+plt.savefig(output_dir / 'physionet_faithfulness_comparison.pdf', dpi=300, bbox_inches='tight')
+plt.savefig(output_dir / 'physionet_faithfulness_comparison.png', dpi=150, bbox_inches='tight')
 plt.close()
 print("✓ Saved faithfulness comparison")
 
@@ -444,8 +440,8 @@ print("\n" + "="*70)
 print("8. SAVING RESULTS")
 print("="*70)
 
-summary.to_csv(output_dir / 'ctg_faithfulness_results.csv', index=False)
-print(f"✓ Saved results to {output_dir / 'ctg_faithfulness_results.csv'}")
+summary.to_csv(output_dir / 'physionet_faithfulness_results.csv', index=False)
+print(f"✓ Saved results to {output_dir / 'physionet_faithfulness_results.csv'}")
 
 # ============================================================================
 # Final Summary
@@ -458,10 +454,10 @@ print("  1. MCal improves Faithfulness (Pearson correlation)")
 print("  2. MCal reduces Deletion AUC (explanations identify truly important features)")
 print("  3. MCal increases Insertion AUC (important features recover predictions faster)")
 print("  4. These improvements demonstrate MCal produces more faithful explanations")
-print("  5. CTG is multi-class (3 classes), showing MCal works beyond binary classification")
+print("  5. PhysioNet is from the MCal paper - validates paper results")
 print("\n📁 Output files saved to:")
-print(f"  - {output_dir / 'ctg_faithfulness_results.csv'}")
-print(f"  - {output_dir / 'ctg_deletion_curves.pdf'}")
-print(f"  - {output_dir / 'ctg_insertion_curves.pdf'}")
-print(f"  - {output_dir / 'ctg_faithfulness_comparison.pdf'}")
+print(f"  - {output_dir / 'physionet_faithfulness_results.csv'}")
+print(f"  - {output_dir / 'physionet_deletion_curves.pdf'}")
+print(f"  - {output_dir / 'physionet_insertion_curves.pdf'}")
+print(f"  - {output_dir / 'physionet_faithfulness_comparison.pdf'}")
 print("\n" + "="*70)

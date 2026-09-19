@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Run Faithfulness, Deletion, and Insertion Experiments for MCal on CTG Dataset
-IMPROVED VERSION: Uses TreeSHAP (exact) and full test set (426 samples)
+Uses SHAP's KernelExplainer for both models and the full test set (426 samples)
 
 CTG (Cardiotocography) - Multi-class classification (3 classes: Normal, Suspect, Pathologic)
 """
@@ -48,7 +48,7 @@ print(f"Using device: {device}")
 torch.manual_seed(42)
 np.random.seed(42)
 
-# Configuration - IMPROVED VERSION
+# Configuration
 config = {
     'n_train': 300,
     'n_test': None,  # Use ALL test samples (426)
@@ -64,7 +64,7 @@ config = {
 }
 
 print("\n" + "="*70)
-print("FAITHFULNESS EXPERIMENTS FOR MCAL - CTG DATASET (IMPROVED)")
+print("FAITHFULNESS EXPERIMENTS FOR MCAL - CTG DATASET")
 print("="*70)
 print("\n🔧 IMPROVEMENTS:")
 print("  - Using KernelExplainer for BOTH models (fair comparison)")
@@ -200,7 +200,7 @@ calib_model = CalibratedTabularModel(base_model, calibrator, device)
 print("✓ Created calibrated model")
 
 # ============================================================================
-# Generate SHAP Explanations - IMPROVED: Using TreeSHAP
+# Generate SHAP explanations with KernelExplainer for both models
 # ============================================================================
 print("\n" + "="*70)
 print("4. GENERATING SHAP EXPLANATIONS (USING KERNELEXPLAINER FOR BOTH)")
@@ -351,25 +351,11 @@ for i in range(len(summary)):
 summary['Improvement'] = improvements
 
 print("\n" + "="*70)
-print(f"CTG RESULTS - IMPROVED (averaged over {len(X_test)} test samples)")
+print(f"CTG RESULTS (averaged over {len(X_test)} test samples)")
 print("="*70)
 print(summary.to_string(index=False))
 print("="*70)
 
-# Compare with previous runs
-print("\n📊 COMPARISON WITH PREVIOUS RUNS:")
-print("  Initial (50 samples, KernelExplainer both):")
-print("    Faithfulness: 0.534 → 0.536 (+0.3%)")
-print("    Deletion AUC: 0.288 → 0.499 (-73.0%)")
-print("    Insertion AUC: 0.773 → 0.825 (+6.7%)")
-print("\n  Mixed Methods (full test set, TreeSHAP uncal + KernelExplainer cal):")
-print("    Faithfulness: 0.315 → 0.482 (+53.1%)")
-print("    Deletion AUC: 0.367 → 0.485 (-32.1%)")
-print("    Insertion AUC: 0.679 → 0.763 (+12.4%)")
-print("\n  Current (KernelExplainer both, full test set - FAIR COMPARISON):")
-print(f"    Faithfulness: {summary.iloc[0]['Uncalibrated']:.3f} → {summary.iloc[0]['MCal Calibrated']:.3f} ({summary.iloc[0]['Improvement']})")
-print(f"    Deletion AUC: {summary.iloc[1]['Uncalibrated']:.3f} → {summary.iloc[1]['MCal Calibrated']:.3f} ({summary.iloc[1]['Improvement']})")
-print(f"    Insertion AUC: {summary.iloc[2]['Uncalibrated']:.3f} → {summary.iloc[2]['MCal Calibrated']:.3f} ({summary.iloc[2]['Improvement']})")
 
 # ============================================================================
 # Create Visualizations
@@ -378,7 +364,7 @@ print("\n" + "="*70)
 print("7. CREATING VISUALIZATIONS")
 print("="*70)
 
-output_dir = Path('results')
+output_dir = Path(__file__).resolve().parents[1] / 'results'
 output_dir.mkdir(exist_ok=True)
 
 # Deletion Curves
@@ -398,13 +384,13 @@ ax.plot(avg_fracs, avg_cal, color='darkorange', linewidth=3, label='MCal Calibra
 
 ax.set_xlabel('Fraction of Features Deleted', fontsize=12)
 ax.set_ylabel('Prediction Score (Predicted Class)', fontsize=12)
-ax.set_title('CTG: Deletion Curves - Improved (KernelExplainer, Full Test Set)', fontsize=14, fontweight='bold')
+ax.set_title('CTG: Deletion Curves (KernelExplainer, Full Test Set)', fontsize=14, fontweight='bold')
 ax.legend(fontsize=11)
 ax.grid(alpha=0.3)
 
 plt.tight_layout()
-plt.savefig(output_dir / 'ctg_deletion_curves_improved.pdf', dpi=300, bbox_inches='tight')
-plt.savefig(output_dir / 'ctg_deletion_curves_improved.png', dpi=150, bbox_inches='tight')
+plt.savefig(output_dir / 'ctg_deletion_curves.pdf', dpi=300, bbox_inches='tight')
+plt.savefig(output_dir / 'ctg_deletion_curves.png', dpi=150, bbox_inches='tight')
 plt.close()
 print("✓ Saved deletion curves")
 
@@ -425,13 +411,13 @@ ax.plot(avg_fracs, avg_cal, color='darkorange', linewidth=3, label='MCal Calibra
 
 ax.set_xlabel('Fraction of Features Inserted', fontsize=12)
 ax.set_ylabel('Prediction Score (Predicted Class)', fontsize=12)
-ax.set_title('CTG: Insertion Curves - Improved (KernelExplainer, Full Test Set)', fontsize=14, fontweight='bold')
+ax.set_title('CTG: Insertion Curves (KernelExplainer, Full Test Set)', fontsize=14, fontweight='bold')
 ax.legend(fontsize=11)
 ax.grid(alpha=0.3)
 
 plt.tight_layout()
-plt.savefig(output_dir / 'ctg_insertion_curves_improved.pdf', dpi=300, bbox_inches='tight')
-plt.savefig(output_dir / 'ctg_insertion_curves_improved.png', dpi=150, bbox_inches='tight')
+plt.savefig(output_dir / 'ctg_insertion_curves.pdf', dpi=300, bbox_inches='tight')
+plt.savefig(output_dir / 'ctg_insertion_curves.png', dpi=150, bbox_inches='tight')
 plt.close()
 print("✓ Saved insertion curves")
 
@@ -457,7 +443,7 @@ bars1 = ax.bar(x - width/2, uncal_vals, width, label='Uncalibrated', color='stee
 bars2 = ax.bar(x + width/2, cal_vals, width, label='MCal Calibrated', color='darkorange')
 
 ax.set_ylabel('Score', fontsize=13)
-ax.set_title('CTG: Faithfulness Metrics - Improved (KernelExplainer, Full Test Set)', fontsize=15, fontweight='bold')
+ax.set_title('CTG: Faithfulness Metrics (KernelExplainer, Full Test Set)', fontsize=15, fontweight='bold')
 ax.set_xticks(x)
 ax.set_xticklabels(metrics, fontsize=11)
 ax.legend(fontsize=11)
@@ -472,8 +458,8 @@ for bars in [bars1, bars2]:
                 ha='center', va='bottom', fontsize=10)
 
 plt.tight_layout()
-plt.savefig(output_dir / 'ctg_faithfulness_comparison_improved.pdf', dpi=300, bbox_inches='tight')
-plt.savefig(output_dir / 'ctg_faithfulness_comparison_improved.png', dpi=150, bbox_inches='tight')
+plt.savefig(output_dir / 'ctg_faithfulness_comparison.pdf', dpi=300, bbox_inches='tight')
+plt.savefig(output_dir / 'ctg_faithfulness_comparison.png', dpi=150, bbox_inches='tight')
 plt.close()
 print("✓ Saved faithfulness comparison")
 
@@ -484,8 +470,8 @@ print("\n" + "="*70)
 print("8. SAVING RESULTS")
 print("="*70)
 
-summary.to_csv(output_dir / 'ctg_faithfulness_results_improved.csv', index=False)
-print(f"✓ Saved results to {output_dir / 'ctg_faithfulness_results_improved.csv'}")
+summary.to_csv(output_dir / 'ctg_faithfulness_results.csv', index=False)
+print(f"✓ Saved results to {output_dir / 'ctg_faithfulness_results.csv'}")
 
 # ============================================================================
 # Final Summary
@@ -493,16 +479,10 @@ print(f"✓ Saved results to {output_dir / 'ctg_faithfulness_results_improved.cs
 print("\n" + "="*70)
 print("EXPERIMENT COMPLETE!")
 print("="*70)
-print("\n✅ KEY FINDINGS:")
-print("  1. Used TreeSHAP (exact) instead of KernelExplainer (sampling)")
-print("  2. Used full test set (426 samples) instead of 50")
-print("  3. Results should be more reliable and less variance")
-print("\n📊 COMPARISON:")
-print("  Check if Deletion AUC improved compared to previous run (-73% → ?)")
-print("  Full test set should give more statistically significant results")
+print("\nSetup: KernelExplainer for both models, full test set (426 samples)")
 print("\n📁 Output files saved to:")
-print(f"  - {output_dir / 'ctg_faithfulness_results_improved.csv'}")
-print(f"  - {output_dir / 'ctg_deletion_curves_improved.pdf'}")
-print(f"  - {output_dir / 'ctg_insertion_curves_improved.pdf'}")
-print(f"  - {output_dir / 'ctg_faithfulness_comparison_improved.pdf'}")
+print(f"  - {output_dir / 'ctg_faithfulness_results.csv'}")
+print(f"  - {output_dir / 'ctg_deletion_curves.pdf'}")
+print(f"  - {output_dir / 'ctg_insertion_curves.pdf'}")
+print(f"  - {output_dir / 'ctg_faithfulness_comparison.pdf'}")
 print("\n" + "="*70)

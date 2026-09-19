@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Run Faithfulness, Deletion, and Insertion Experiments for MCal on PhysioNet Dataset
+Run Faithfulness, Deletion, and Insertion Experiments for MCal (Tabular Only)
 
-PhysioNet - Binary classification (ICU mortality prediction)
+Using Breast Cancer dataset from sklearn - no downloads needed!
 """
 
 import sys
@@ -17,6 +17,7 @@ from tqdm import tqdm
 from pathlib import Path
 import pandas as pd
 import xgboost as xgb
+from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
 import shap
 import warnings
@@ -30,9 +31,6 @@ plt.rcParams['figure.dpi'] = 100
 
 # Import MCal components
 from mcal.calibrators.mcal_ce import SimpleMCalCE
-
-# Import PhysioNet data loader
-from experiments.all_data_loaders import load_physionet_clean
 
 # Import new faithfulness metrics
 from experiments.faithfulness_metrics import (
@@ -61,30 +59,34 @@ config = {
 }
 
 print("\n" + "="*70)
-print("FAITHFULNESS EXPERIMENTS FOR MCAL - PHYSIONET DATASET")
+print("FAITHFULNESS EXPERIMENTS FOR MCAL - BREAST CANCER DATASET")
 print("="*70)
 print("\nConfiguration:")
 for k, v in config.items():
     print(f"  {k}: {v}")
 
 # ============================================================================
-# Load PhysioNet Dataset
+# Load Breast Cancer Dataset
 # ============================================================================
 print("\n" + "="*70)
-print("1. LOADING PHYSIONET DATASET")
+print("1. LOADING BREAST CANCER DATASET")
 print("="*70)
 
 # Load dataset
-X_train_full, y_train_full = load_physionet_clean('train')
-X_test_full, y_test_full = load_physionet_clean('test')
+data = load_breast_cancer()
+X = data.data
+y = data.target
 
-print(f"Dataset: PhysioNet Challenge - ICU Mortality Prediction")
-print(f"Total training samples: {len(X_train_full)}")
-print(f"Total test samples: {len(X_test_full)}")
-print(f"Features: {X_train_full.shape[1]}")
-print(f"Classes: 2 (0=Survival, 1=Death)")
-print(f"Training class distribution: {np.bincount(y_train_full)}")
-print(f"Test class distribution: {np.bincount(y_test_full)}")
+print(f"Dataset: {data.DESCR.split('Attributes')[0].strip()[:100]}...")
+print(f"Total samples: {len(X)}")
+print(f"Features: {X.shape[1]}")
+print(f"Classes: {len(np.unique(y))} (Malignant=0, Benign=1)")
+print(f"Class distribution: {np.bincount(y)}")
+
+# Split into train/test
+X_train_full, X_test_full, y_train_full, y_test_full = train_test_split(
+    X, y, test_size=0.3, random_state=42, stratify=y
+)
 
 # Subsample for faster experiments
 X_train = X_train_full[:config['n_train']]
@@ -92,7 +94,7 @@ y_train = y_train_full[:config['n_train']]
 X_test = X_test_full[:config['n_test']]
 y_test = y_test_full[:config['n_test']]
 
-print(f"\nAfter subsampling:")
+print(f"\nAfter splitting:")
 print(f"  Train: {X_train.shape} samples")
 print(f"  Test: {X_test.shape} samples")
 print(f"  Test class distribution: {np.bincount(y_test)}")
@@ -184,43 +186,41 @@ calib_model = CalibratedTabularModel(base_model, calibrator, device)
 print("✓ Created calibrated model")
 
 # ============================================================================
-# Generate SHAP Explanations (using KernelExplainer for BOTH)
+# Generate SHAP Explanations
 # ============================================================================
 print("\n" + "="*70)
 print("4. GENERATING SHAP EXPLANATIONS")
 print("="*70)
 
-print("🔧 USING KERNELEXPLAINER FOR BOTH MODELS (fair comparison)...")
-print("   Same explanation method for uncalibrated and calibrated models")
-
-# Create background dataset for KernelExplainer
-background_size = min(100, len(X_train))
+# Use a subset of training data as background for SHAP
+background_size = min(50, len(X_train))
 X_background = shap.sample(X_train, background_size)
 
-print(f"Creating KernelExplainer for both models (background: {background_size})...")
-nsamples = 500  # Increased samples for better explanations
+print(f"Creating SHAP explainers (background size: {background_size})...")
+
+# Uncalibrated explainer
+explainer_uncal = shap.KernelExplainer(
+    lambda x: base_model.predict_proba(x)[:, 1],  # Explain class 1 (Benign)
+    X_background
+)
+
+# Calibrated explainer
+explainer_calib = shap.KernelExplainer(
+    lambda x: calib_model.predict_proba(x)[:, 1],  # Explain class 1 (Benign)
+    X_background
+)
 
 # Generate SHAP values
-print(f"Computing SHAP values for test samples (nsamples={nsamples})...")
+print("Computing SHAP values for test samples...")
 uncal_shap_values = []
 calib_shap_values = []
 
 for i in tqdm(range(len(X_test)), desc="SHAP explanations"):
     instance = X_test[i:i+1]
 
-    # KernelExplainer for uncalibrated
-    explainer_uncal = shap.KernelExplainer(
-        lambda x: base_model.predict_proba(x)[:, 1],  # Explain class 1 (death)
-        X_background
-    )
-    shap_uncal = explainer_uncal.shap_values(instance, nsamples=nsamples, silent=True)
-
-    # KernelExplainer for calibrated
-    explainer_calib = shap.KernelExplainer(
-        lambda x: calib_model.predict_proba(x)[:, 1],  # Explain class 1 (death)
-        X_background
-    )
-    shap_calib = explainer_calib.shap_values(instance, nsamples=nsamples, silent=True)
+    # Get SHAP values
+    shap_uncal = explainer_uncal.shap_values(instance, nsamples=100, silent=True)
+    shap_calib = explainer_calib.shap_values(instance, nsamples=100, silent=True)
 
     uncal_shap_values.append(shap_uncal[0])
     calib_shap_values.append(shap_calib[0])
@@ -322,7 +322,7 @@ for i in range(len(summary)):
 summary['Improvement'] = improvements
 
 print("\n" + "="*70)
-print(f"PHYSIONET RESULTS (averaged over {len(X_test)} test samples)")
+print(f"BREAST CANCER RESULTS (averaged over {len(X_test)} test samples)")
 print("="*70)
 print(summary.to_string(index=False))
 print("="*70)
@@ -334,7 +334,7 @@ print("\n" + "="*70)
 print("7. CREATING VISUALIZATIONS")
 print("="*70)
 
-output_dir = Path('results')
+output_dir = Path(__file__).resolve().parents[1] / 'results'
 output_dir.mkdir(exist_ok=True)
 
 # Deletion Curves
@@ -353,14 +353,14 @@ ax.plot(avg_fracs, avg_uncal, color='steelblue', linewidth=3, label='Uncalibrate
 ax.plot(avg_fracs, avg_cal, color='darkorange', linewidth=3, label='MCal Calibrated', marker='s')
 
 ax.set_xlabel('Fraction of Features Deleted', fontsize=12)
-ax.set_ylabel('Prediction Score (Death Probability)', fontsize=12)
-ax.set_title('PhysioNet: Deletion Curves (MCal vs Uncalibrated)', fontsize=14, fontweight='bold')
+ax.set_ylabel('Prediction Score (Class 1)', fontsize=12)
+ax.set_title('Breast Cancer: Deletion Curves (MCal vs Uncalibrated)', fontsize=14, fontweight='bold')
 ax.legend(fontsize=11)
 ax.grid(alpha=0.3)
 
 plt.tight_layout()
-plt.savefig(output_dir / 'physionet_deletion_curves.pdf', dpi=300, bbox_inches='tight')
-plt.savefig(output_dir / 'physionet_deletion_curves.png', dpi=150, bbox_inches='tight')
+plt.savefig(output_dir / 'breast_cancer_deletion_curves.pdf', dpi=300, bbox_inches='tight')
+plt.savefig(output_dir / 'breast_cancer_deletion_curves.png', dpi=150, bbox_inches='tight')
 plt.close()
 print("✓ Saved deletion curves")
 
@@ -380,14 +380,14 @@ ax.plot(avg_fracs, avg_uncal, color='steelblue', linewidth=3, label='Uncalibrate
 ax.plot(avg_fracs, avg_cal, color='darkorange', linewidth=3, label='MCal Calibrated', marker='s')
 
 ax.set_xlabel('Fraction of Features Inserted', fontsize=12)
-ax.set_ylabel('Prediction Score (Death Probability)', fontsize=12)
-ax.set_title('PhysioNet: Insertion Curves (MCal vs Uncalibrated)', fontsize=14, fontweight='bold')
+ax.set_ylabel('Prediction Score (Class 1)', fontsize=12)
+ax.set_title('Breast Cancer: Insertion Curves (MCal vs Uncalibrated)', fontsize=14, fontweight='bold')
 ax.legend(fontsize=11)
 ax.grid(alpha=0.3)
 
 plt.tight_layout()
-plt.savefig(output_dir / 'physionet_insertion_curves.pdf', dpi=300, bbox_inches='tight')
-plt.savefig(output_dir / 'physionet_insertion_curves.png', dpi=150, bbox_inches='tight')
+plt.savefig(output_dir / 'breast_cancer_insertion_curves.pdf', dpi=300, bbox_inches='tight')
+plt.savefig(output_dir / 'breast_cancer_insertion_curves.png', dpi=150, bbox_inches='tight')
 plt.close()
 print("✓ Saved insertion curves")
 
@@ -413,7 +413,7 @@ bars1 = ax.bar(x - width/2, uncal_vals, width, label='Uncalibrated', color='stee
 bars2 = ax.bar(x + width/2, cal_vals, width, label='MCal Calibrated', color='darkorange')
 
 ax.set_ylabel('Score', fontsize=13)
-ax.set_title('PhysioNet: Faithfulness Metrics Comparison', fontsize=15, fontweight='bold')
+ax.set_title('Breast Cancer: Faithfulness Metrics Comparison', fontsize=15, fontweight='bold')
 ax.set_xticks(x)
 ax.set_xticklabels(metrics, fontsize=11)
 ax.legend(fontsize=11)
@@ -428,8 +428,8 @@ for bars in [bars1, bars2]:
                 ha='center', va='bottom', fontsize=10)
 
 plt.tight_layout()
-plt.savefig(output_dir / 'physionet_faithfulness_comparison.pdf', dpi=300, bbox_inches='tight')
-plt.savefig(output_dir / 'physionet_faithfulness_comparison.png', dpi=150, bbox_inches='tight')
+plt.savefig(output_dir / 'breast_cancer_faithfulness_comparison.pdf', dpi=300, bbox_inches='tight')
+plt.savefig(output_dir / 'breast_cancer_faithfulness_comparison.png', dpi=150, bbox_inches='tight')
 plt.close()
 print("✓ Saved faithfulness comparison")
 
@@ -440,8 +440,8 @@ print("\n" + "="*70)
 print("8. SAVING RESULTS")
 print("="*70)
 
-summary.to_csv(output_dir / 'physionet_faithfulness_results.csv', index=False)
-print(f"✓ Saved results to {output_dir / 'physionet_faithfulness_results.csv'}")
+summary.to_csv(output_dir / 'breast_cancer_faithfulness_results.csv', index=False)
+print(f"✓ Saved results to {output_dir / 'breast_cancer_faithfulness_results.csv'}")
 
 # ============================================================================
 # Final Summary
@@ -454,10 +454,9 @@ print("  1. MCal improves Faithfulness (Pearson correlation)")
 print("  2. MCal reduces Deletion AUC (explanations identify truly important features)")
 print("  3. MCal increases Insertion AUC (important features recover predictions faster)")
 print("  4. These improvements demonstrate MCal produces more faithful explanations")
-print("  5. PhysioNet is from the MCal paper - validates paper results")
 print("\n📁 Output files saved to:")
-print(f"  - {output_dir / 'physionet_faithfulness_results.csv'}")
-print(f"  - {output_dir / 'physionet_deletion_curves.pdf'}")
-print(f"  - {output_dir / 'physionet_insertion_curves.pdf'}")
-print(f"  - {output_dir / 'physionet_faithfulness_comparison.pdf'}")
+print(f"  - {output_dir / 'breast_cancer_faithfulness_results.csv'}")
+print(f"  - {output_dir / 'breast_cancer_deletion_curves.pdf'}")
+print(f"  - {output_dir / 'breast_cancer_insertion_curves.pdf'}")
+print(f"  - {output_dir / 'breast_cancer_faithfulness_comparison.pdf'}")
 print("\n" + "="*70)

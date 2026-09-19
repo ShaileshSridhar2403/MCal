@@ -30,6 +30,7 @@ plt.rcParams['figure.dpi'] = 100
 # Import MCal components
 from experiments.all_data_loaders import load_breakhis_clean
 from mcal.calibrators.mcal_ce import SimpleMCalCE
+from mcal.paths import MODEL_ROOT
 from experiments.explanations import ImageKernelSHAP
 
 # Import new faithfulness metrics
@@ -73,9 +74,7 @@ print("\n" + "="*70)
 print("1. LOADING BREAKHIS MODEL AND DATA")
 print("="*70)
 
-model_path = Path('saved_models/vit_timm_vanilla_breakhis_ps56_98tr89te.pth')
-if not model_path.exists():
-    model_path = Path('../saved_models/vit_timm_vanilla_breakhis_ps56_98tr89te.pth')
+model_path = MODEL_ROOT / 'vit_timm_vanilla_breakhis_ps56_98tr89te.pth'
 
 print(f"Loading model from: {model_path}")
 
@@ -364,7 +363,7 @@ print("\n" + "="*70)
 print("7. CREATING VISUALIZATIONS")
 print("="*70)
 
-output_dir = Path('results')
+output_dir = Path(__file__).resolve().parents[1] / 'results'
 output_dir.mkdir(exist_ok=True)
 
 # Deletion Curves
