@@ -26,6 +26,10 @@ mcal_root = Path(__file__).parent.parent.parent
 from mcal.calibrators.mcal import MCal
 from mcal.paths import MODEL_ROOT
 from mcal.calibrators.mcal_ce import MCal_CE
+from experiments.mcal_ce_results import save_fit_summary, combine_fraction_results
+
+# Per-fraction and combined MCal_CE summaries are written here
+MCAL_CE_RESULTS_DIR = Path(__file__).parent / "results"
 from mcal.calibrators.temperature import TemperatureScaling
 from mcal.calibrators.platt import PlattCalibrator
 
@@ -192,13 +196,14 @@ def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=50
             fraction=fraction,
             experiment_id=experiment_id
         )
+        save_fit_summary(calibrator, MCAL_CE_RESULTS_DIR)
 
         calibrated_probs = calibrator.forward(outputs_tensor[fraction])
         transformed_outputs[fraction] = calibrated_probs.detach().cpu().numpy()
 
     # Combine results
     print(f"\n=== Combining MCal_CE results for experiment: {experiment_id} ===")
-    combined_file = MCal_CE.combine_fraction_results(experiment_id, cleanup_temp_files=True)
+    combined_file = combine_fraction_results(MCAL_CE_RESULTS_DIR, experiment_id, cleanup_temp_files=True)
     print(f"All MCal_CE results combined and saved to: {combined_file}")
 
     return transformed_outputs
@@ -233,6 +238,7 @@ def apply_mcal_ce_uncond_calibrator(outputs_tensor, target_labels, device, max_s
         fraction=0,  # Placeholder for unconditional training
         experiment_id=experiment_id
     )
+    save_fit_summary(calibrator, MCAL_CE_RESULTS_DIR)
 
     # Apply the single calibrator to all fractions
     for fraction in tqdm(range(n_fractions), desc="Applying MCal_CE_Uncond calibrator"):
@@ -241,7 +247,7 @@ def apply_mcal_ce_uncond_calibrator(outputs_tensor, target_labels, device, max_s
 
     # Combine results
     print(f"\n=== Combining MCal_CE_Uncond results for experiment: {experiment_id} ===")
-    combined_file = MCal_CE.combine_fraction_results(experiment_id, cleanup_temp_files=True)
+    combined_file = combine_fraction_results(MCAL_CE_RESULTS_DIR, experiment_id, cleanup_temp_files=True)
     if combined_file:
         print(f"All MCal_CE_Uncond results combined and saved to: {combined_file}")
 

@@ -6,9 +6,6 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from tqdm import tqdm
-import json
-import glob
-import os
 from .base import BaseCalibrator
 
 # Import kl_divergence from utils
@@ -137,11 +134,15 @@ class MCal_CE(BaseCalibrator):
             max_steps (int): Maximum number of optimization steps
             lr (float): Learning rate for optimization
             verbose (bool): Whether to show progress bar and metrics
-            fraction (int, optional): Current fraction being processed (for multi-fraction experiments)
-            experiment_id (str, optional): Unique identifier for this experiment run
+            fraction (int, optional): Ablation fraction this fit belongs to; recorded
+                in the fit summary
+            experiment_id (str, optional): Experiment identifier recorded in the fit
+                summary when ``fraction`` is given (defaults to "default")
             
         Returns:
-            Dictionary containing training statistics
+            Dictionary containing training statistics. A summary of the fitted
+            calibrator (mean probabilities, KL divergences, accuracy and learned
+            parameters) is stored in ``self.fit_summary_``. ``fit`` writes no files.
         """
         # self._validate_fit_inputs(ablated_probs, None)
         
@@ -260,33 +261,13 @@ class MCal_CE(BaseCalibrator):
                 'learned_parameters': learned_params
             }
             
-            # Create results directory if it doesn't exist
-            results_dir = "results"
-            os.makedirs(results_dir, exist_ok=True)
-            
-            # Save to temporary fraction-wise JSON file if fraction is specified
             if fraction is not None:
-                if experiment_id is None:
-                    experiment_id = "default"
-                
-                # Save temporary fraction result
-                temp_filename = os.path.join(results_dir, f"temp_mcal_ce_fraction_{fraction}_{experiment_id}.json")
-                fraction_data = {
+                results_data = {
                     'fraction': fraction,
-                    'experiment_id': experiment_id,
+                    'experiment_id': experiment_id if experiment_id is not None else "default",
                     **results_data
                 }
-                
-                with open(temp_filename, 'w') as f:
-                    json.dump(fraction_data, f, indent=2)
-                
-                print(f"Fraction {fraction} results saved to temp file: {temp_filename}")
-            else:
-                # Save single result file if no fraction specified
-                json_filename = os.path.join(results_dir, f"mcal_ce_results_{self.head_type}_{num_classes}classes.json")
-                with open(json_filename, 'w') as f:
-                    json.dump(results_data, f, indent=2)
-                print(f"Results saved to: {json_filename}")
+            self.fit_summary_ = results_data
             
             print(f"Final calibrated probabilities shape: {final_calibrated_probs.shape}")
             print(f"Mean ablated probabilities: {mean_ablated_probs}")
@@ -301,72 +282,3 @@ class MCal_CE(BaseCalibrator):
 
         self._is_fitted = True
         return stats
-
-    @staticmethod
-    def combine_fraction_results(experiment_id: str = "default", cleanup_temp_files: bool = True) -> str:
-        """Combine all temporary fraction results into a single comprehensive JSON file.
-        
-        Args:
-            experiment_id (str): Experiment identifier to match temp files
-            cleanup_temp_files (bool): Whether to delete temporary files after combining
-            
-        Returns:
-            str: Path to the combined results file
-        """
-        # Create results directory if it doesn't exist
-        results_dir = "results"
-        os.makedirs(results_dir, exist_ok=True)
-        
-        # Find all temporary files for this experiment in the results directory
-        temp_pattern = os.path.join(results_dir, f"temp_mcal_ce_fraction_*_{experiment_id}.json")
-        temp_files = glob.glob(temp_pattern)
-        
-        if not temp_files:
-            print(f"No temporary files found for experiment_id: {experiment_id} in {results_dir}/")
-            print(f"Pattern searched: {temp_pattern}")
-            return None
-        
-        combined_results = {
-            'experiment_id': experiment_id,
-            'fractions': {}
-        }
-        
-        print(f"Found {len(temp_files)} temporary files to combine:")
-        for temp_file in temp_files:
-            print(f"  - {temp_file}")
-        
-        # Load and combine all fraction results
-        for temp_file in sorted(temp_files):
-            try:
-                with open(temp_file, 'r') as f:
-                    fraction_data = json.load(f)
-                
-                fraction_num = fraction_data['fraction']
-                # Remove redundant fields before storing
-                fraction_data.pop('experiment_id', None)
-                fraction_data.pop('fraction', None)
-                
-                combined_results['fractions'][str(fraction_num)] = fraction_data
-                
-            except Exception as e:
-                print(f"Error loading {temp_file}: {e}")
-                continue
-        
-        # Save combined results
-        combined_filename = os.path.join(results_dir, f"mcal_ce_combined_results_{experiment_id}.json")
-        with open(combined_filename, 'w') as f:
-            json.dump(combined_results, f, indent=2)
-        
-        print(f"Combined results from {len(combined_results['fractions'])} fractions")
-        print(f"Combined results saved to: {combined_filename}")
-        
-        # Clean up temporary files if requested
-        if cleanup_temp_files:
-            for temp_file in temp_files:
-                try:
-                    os.remove(temp_file)
-                    print(f"Removed temp file: {temp_file}")
-                except Exception as e:
-                    print(f"Error removing {temp_file}: {e}")
-        
-        return combined_filename

@@ -43,6 +43,10 @@ from mcal.utils.optimization import get_expectation, make_one_hot, kl_divergence
 # Import calibrator modules
 from mcal.calibrators.mcal import MCal
 from mcal.calibrators.mcal_ce import MCal_CE
+from experiments.mcal_ce_results import save_fit_summary, combine_fraction_results
+
+# Per-fraction and combined MCal_CE summaries are written here
+MCAL_CE_RESULTS_DIR = Path(__file__).parent / "results"
 from mcal.calibrators.platt import PlattCalibrator
 from mcal.calibrators.temperature import TemperatureScaling
 
@@ -349,6 +353,7 @@ def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=50
             fraction=fraction,  # Pass current fraction number
             experiment_id=experiment_id  # Pass experiment identifier
         )
+        save_fit_summary(calibrator, MCAL_CE_RESULTS_DIR)
         
         # Apply calibration using forward method
         calibrated_probs = calibrator.forward(outputs_tensor[fraction])
@@ -356,7 +361,7 @@ def apply_mcal_ce_calibrator(outputs_tensor, target_labels, device, max_steps=50
     
     # Combine all fraction results into a single JSON file
     print(f"\n=== Combining MCal_CE results for experiment: {experiment_id} ===")
-    combined_file = MCal_CE.combine_fraction_results(experiment_id, cleanup_temp_files=True)
+    combined_file = combine_fraction_results(MCAL_CE_RESULTS_DIR, experiment_id, cleanup_temp_files=True)
     if combined_file:
         print(f"All MCal_CE results combined and saved to: {combined_file}")
     else:
