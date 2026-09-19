@@ -20,16 +20,12 @@ from pathlib import Path
 #we were previously using train data for table results and now using test data
 
 project_root = Path().absolute().parent.parent
-sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / "src"))
-sys.path.insert(0, str(project_root / "configs"))
-sys.path.insert(0, str(project_root / "experiments"))
 
 
-from configs.dataset_configs import get_dataset_config
-from src.data.augmentation.patch_cutout import PatchCutout
-from src.data.loaders import ChexPertLoader
-from configs.model_dict import get_model_path
+from mcal.configs.dataset_configs import get_dataset_config
+from mcal.data.augmentation.patch_cutout import PatchCutout
+from mcal.data.loaders import ChexPertLoader
+from mcal.configs.model_dict import get_model_path
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -26,15 +26,14 @@ sns.set_style('whitegrid')
 plt.rcParams['figure.dpi'] = 100
 
 # Add parent directory to path
-sys.path.append('..')
 
 # Import MCal components
-from all_data_loaders import load_breakhis_clean
-from src.calibrators.mcal_ce import SimpleMCalCE
-from explanations import ImageKernelSHAP
+from experiments.all_data_loaders import load_breakhis_clean
+from mcal.calibrators.mcal_ce import SimpleMCalCE
+from experiments.explanations import ImageKernelSHAP
 
 # Import new faithfulness metrics
-from faithfulness_metrics import (
+from experiments.faithfulness_metrics import (
     ImageFaithfulnessPearson, ImageDeletionMetric, ImageInsertionMetric
 )
 

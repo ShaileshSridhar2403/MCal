@@ -24,9 +24,8 @@ from trl import SFTConfig, SFTTrainer
 
 # Add experiments to path for all_data_loaders
 experiments_root = Path(__file__).parent.parent
-sys.path.insert(0, str(experiments_root))
 
-from all_data_loaders import load_medqa_ablated_prob, load_medmcqa_ablated_prob, tokenize_and_mask_medqa, tokenize_and_mask_medmcqa
+from experiments.all_data_loaders import load_medqa_ablated_prob, load_medmcqa_ablated_prob, tokenize_and_mask_medqa, tokenize_and_mask_medmcqa
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

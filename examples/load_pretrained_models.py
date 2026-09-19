@@ -13,11 +13,9 @@ import numpy as np
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent
-sys.path.insert(0, str(mcal_root))
-sys.path.insert(0, str(mcal_root / "configs"))
 
-from configs.model_dict import get_model_path, MODEL_DICT
-from configs.dataset_configs import get_dataset_config, get_combined_config
+from mcal.configs.model_dict import get_model_path, MODEL_DICT
+from mcal.configs.dataset_configs import get_dataset_config, get_combined_config
 import timm
 
 

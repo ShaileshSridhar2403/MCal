@@ -21,42 +21,34 @@ import torchvision.transforms as transforms
 from torchvision import datasets
 import pdb
 # import notebook_data_loader as ndl
-import chexpert_data_setup as cds
-from vit_patch_drop_outputs import get_patch_drop_outputs
+import experiments.vision.chexpert_data_setup as cds
+from experiments.vision.vit_patch_drop_outputs import get_patch_drop_outputs
 
 # Add MCal to path (file is now in experiments/vision/)
 mcal_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(mcal_root))
-sys.path.insert(0, str(mcal_root / "configs"))
-sys.path.insert(0, str(mcal_root / "src"))
-sys.path.insert(0, str(mcal_root / "experiments"))
 
-# Add XAI_Benchmark to path for data loading and augmentation
-xai_root = mcal_root.parent / "XAI_Benchmark"
-sys.path.insert(0, str(xai_root))
-sys.path.insert(0, str(xai_root / "augmentation"))
 
-from configs.model_dict import get_model_path
-from configs.dataset_configs import get_dataset_config
+from mcal.configs.model_dict import get_model_path
+from mcal.configs.dataset_configs import get_dataset_config
 import timm
 
 
 
 # Import augmentation utilities from MCal
-from src.data.augmentation.patch_cutout import PatchCutout
+from mcal.data.augmentation.patch_cutout import PatchCutout
 
 # Import utils directly to avoid circular imports
-from src.utils.optimization import get_expectation, make_one_hot, kl_divergence
+from mcal.utils.optimization import get_expectation, make_one_hot, kl_divergence
 
 # Import calibrator modules
-from src.calibrators.mcal import MCal
-from src.calibrators.mcal_ce import MCal_CE
-from src.calibrators.platt import PlattCalibrator
-from src.calibrators.temperature import TemperatureScaling
+from mcal.calibrators.mcal import MCal
+from mcal.calibrators.mcal_ce import MCal_CE
+from mcal.calibrators.platt import PlattCalibrator
+from mcal.calibrators.temperature import TemperatureScaling
 
 # Import transform modules for backward compatibility  
-from src.transforms.lambda_transforms import ExpectationLambdaTransform, OptimizedLambdaTransform
-from src.transforms.logits import LogitsSharpTransform
+from mcal.transforms.lambda_transforms import ExpectationLambdaTransform, OptimizedLambdaTransform
+from mcal.transforms.logits import LogitsSharpTransform
 
 
 
@@ -565,7 +557,7 @@ def build_kl_comparison_table(aggregated_results, include_methods=None):
 #change to chexpert
 def process_chexpert_dataset(methods=None, device="cuda", save_dir="./results", n_runs=3, 
                        n_samples=1000, n_fractions=16, overwrite=False, use_cache=True,
-                       patchcutout_data_dir="./dataset_store/model_outputs", use_default_data=True):
+                       use_default_data=True):
     """
     Process CheXpert dataset and generate benchmarks with multiple runs.
 
@@ -578,7 +570,6 @@ def process_chexpert_dataset(methods=None, device="cuda", save_dir="./results", 
         n_fractions (int): Number of fractions to generate
         overwrite (bool): Whether to overwrite existing results
         use_cache (bool): Whether to use cached predictions for vanilla model
-        patchcutout_data_dir (str): Directory containing PatchCutout predictions
         use_default_data (bool): Whether to use default CheXpert data
     """
     # Default methods - include all calibrators and pre-computed methods
@@ -735,8 +726,6 @@ def main():
     parser.add_argument("--fractions", type=int, default=16, help="Number of fractions")
     parser.add_argument("--device", type=str, default="cuda", help="Device (cuda/cpu)")
     parser.add_argument("--save_dir", type=str, default=f"{mcal_root}/experiments/vision/results", help="Save directory")
-    parser.add_argument("--patchcutout_data_dir", type=str, default="../../../XAI_Benchmark/dataset_store/model_outputs", 
-                       help="Directory containing PatchCutout predictions from XAI_Benchmark")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing results")
     parser.add_argument("--no-cache", action="store_true", help="Disable caching of generated predictions")
     parser.add_argument("--no-default-data", action="store_true", help="Disable use of default CheXpert data")
@@ -761,7 +750,6 @@ def main():
         n_fractions=args.fractions,
         overwrite=args.overwrite,
         use_cache=not args.no_cache,
-        patchcutout_data_dir=args.patchcutout_data_dir,
         use_default_data=not args.no_default_data
     )
     

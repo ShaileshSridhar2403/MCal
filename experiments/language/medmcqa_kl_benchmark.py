@@ -22,17 +22,16 @@ import pdb
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(mcal_root))
-sys.path.insert(0, str(mcal_root / "configs"))
 
 # Import MCal modules for transforms
-from src.calibrators.mcal import MCal
-from src.calibrators.mcal_ce import MCal_CE
-from src.calibrators.temperature import TemperatureScaling
-from src.calibrators.platt import PlattCalibrator
+from mcal.calibrators.mcal import MCal
+from mcal.paths import MODEL_ROOT
+from mcal.calibrators.mcal_ce import MCal_CE
+from mcal.calibrators.temperature import TemperatureScaling
+from mcal.calibrators.platt import PlattCalibrator
 
 # Import our self-contained MedMCQA utilities
-from medmcqa_utils import (
+from experiments.language.medmcqa_utils import (
     MCal_LLaMAModel,
     load_local_medmcqa_data,
     load_synthetic_medmcqa_data,
@@ -317,7 +316,7 @@ def kl_divergence(p, q, epsilon=1e-8):
     return torch.sum(p * torch.log(p / q))
 
 def load_medmcqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
-                     model_path="~/foo/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
+                     model_path=str(MODEL_ROOT / "language" / "Meta-Llama-3-8B-Instruct"),
                      use_real_data=True, balanced=True):
     """Load MedMCQA data following vision benchmark pattern."""
 
@@ -364,7 +363,7 @@ def load_medmcqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
         elif model_type == "qlora":
             # Use standard word replacement strategy
 
-            expanded_path = Path("~/foo/MCal/saved_models/medmcqa/medmcqa_p0.5/merged_model").expanduser()
+            expanded_path = MODEL_ROOT / "medmcqa" / "medmcqa_p0.5" / "merged_model"
             model = load_medmcqa_llama_model(str(expanded_path))
             print(f"Using qlora merged model at: {expanded_path}")
 
@@ -533,7 +532,7 @@ def save_results(results, save_dir="./results"):
 
 def process_medmcqa_dataset(methods=None, device="cuda", save_dir="./results", n_runs=3,
                            n_samples=10, n_fractions=10,
-                           model_path="~/foo/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
+                           model_path=str(MODEL_ROOT / "language" / "Meta-Llama-3-8B-Instruct"),
                            use_real_data=True, balanced=True):
     """Process MedMCQA dataset with multiple calibration methods."""
 
@@ -671,7 +670,7 @@ def main():
                        help="Calibration methods to evaluate")
     parser.add_argument("--device", type=str, default="cuda",
                        help="Device to use (cuda/cpu)")
-    parser.add_argument("--save_dir", type=str, default="./results",
+    parser.add_argument("--save_dir", type=str, default=str(Path(__file__).parent / "results"),
                        help="Directory to save results")
     parser.add_argument("--runs", type=int, default=3,
                        help="Number of runs")
@@ -680,7 +679,7 @@ def main():
     parser.add_argument("--fractions", type=int, default=10,
                        help="Number of ablation fractions")
     parser.add_argument("--model_path", type=str,
-                       default="~/foo/MCal/saved_models/language/Meta-Llama-3-8B-Instruct/",
+                       default=str(MODEL_ROOT / "language" / "Meta-Llama-3-8B-Instruct"),
                        help="Path to LLaMA model")
     parser.add_argument("--use_real_data", action="store_true", default=True,
                        help="Use real MedMCQA dataset (default: True)")

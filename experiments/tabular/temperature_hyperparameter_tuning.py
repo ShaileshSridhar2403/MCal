@@ -23,9 +23,8 @@ from tqdm import tqdm
 # Add src to path
 current_dir = Path(__file__).parent
 project_root = current_dir.parent.parent
-sys.path.insert(0, str(project_root / "src"))
 
-from calibrators.temperature import TemperatureScaling
+from mcal.calibrators.temperature import TemperatureScaling
 
 
 def compute_calibration_metrics(probs, labels):
@@ -224,8 +223,7 @@ def load_sample_data(dataset='breast_cancer', n_samples=1000):
     """Load sample data for tuning."""
     if dataset == 'breast_cancer':
         # Import data setup function
-        sys.path.insert(0, str(Path(__file__).parent))
-        from breast_cancer_data_setup import load_breast_cancer_data
+        from experiments.tabular.breast_cancer_data_setup import load_breast_cancer_data
 
         # Load data with a single fraction for quick testing
         results = load_breast_cancer_data(

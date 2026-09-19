@@ -9,21 +9,7 @@ from typing import Dict, Any, Optional
 
 from .base import BaseTransform
 
-# Import optimization utilities directly to avoid circular imports
-import sys
-import os
-from pathlib import Path
-
-# Add the utils directory to path for direct import
-current_dir = Path(__file__).parent
-utils_dir = current_dir.parent / "utils"
-sys.path.insert(0, str(utils_dir))
-
-try:
-    from optimization import get_expectation, make_one_hot, kl_divergence
-except ImportError:
-    # Fallback for direct execution
-    from utils.optimization import get_expectation, make_one_hot, kl_divergence
+from ..utils.optimization import get_expectation, make_one_hot, kl_divergence
 
 
 class LogitsSharpTransform(BaseTransform):

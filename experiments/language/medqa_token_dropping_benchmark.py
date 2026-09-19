@@ -18,10 +18,9 @@ from tabulate import tabulate
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(mcal_root))
 
 # Import our self-contained MedQA utilities
-from medqa_utils import (
+from experiments.language.medqa_utils import (
     MCal_LLaMAModel,
     load_local_medqa_data,
     generate_fractionwise_predictions_with_token_dropping,

@@ -7,17 +7,15 @@ from torch.utils.data import DataLoader
 import pdb
 from pathlib import Path
 
-sys.path.append(os.path.abspath('.'))
 
 # Add necessary paths to import modules
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = Path(current_dir).parent.parent
-sys.path.append(str(project_root))
 
 # Import required modules
 from vit_patch_drop.src.models.load_trained_weights import load_vit_model, create_patch_mask
-from configs.model_dict import model_dict, get_model_path
-from src.data.loaders import MRILoader, BreakHisLoader, ChexPertLoader
+from mcal.configs.model_dict import model_dict, get_model_path
+from mcal.data.loaders import MRILoader, BreakHisLoader, ChexPertLoader
 
 
 

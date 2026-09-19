@@ -10,20 +10,7 @@ from tqdm import tqdm
 from .base import BaseCalibrator
 
 # Import kl_divergence from utils
-import sys
-import os
-from pathlib import Path
-
-# Add the utils directory to path for direct import
-current_dir = Path(__file__).parent
-utils_dir = current_dir.parent / "utils"
-sys.path.insert(0, str(utils_dir))
-
-try:
-    from optimization import kl_divergence
-except ImportError:
-    # Fallback for direct execution
-    from utils.optimization import kl_divergence
+from ..utils.optimization import kl_divergence
 
 
 class MCal(BaseCalibrator):

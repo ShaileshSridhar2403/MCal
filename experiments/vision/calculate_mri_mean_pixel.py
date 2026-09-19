@@ -13,12 +13,10 @@ from tqdm import tqdm
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(mcal_root))
-sys.path.insert(0, str(mcal_root / "src"))
 import pdb
 
 # Import MCal data loaders
-from src.data.loaders import MRILoader
+from mcal.data.loaders import MRILoader
 
 def calculate_mri_mean_pixel_values():
     """Calculate mean pixel values for the MRI training dataset.

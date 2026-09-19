@@ -7,9 +7,8 @@ import sys
 import os
 
 # Add the src directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from calibrators import MCal, PlattCalibrator, TemperatureScaling
+from mcal.calibrators import MCal, PlattCalibrator, TemperatureScaling
 
 
 class TestMCal:
@@ -220,7 +219,7 @@ class TestUtilityFunctions:
     def test_get_expectation(self):
         """Test get_expectation function equivalent."""
         # Import utility functions
-        from utils.optimization import get_expectation, make_one_hot
+        from mcal.utils.optimization import get_expectation, make_one_hot
         
         one_hot_exp, prob_exp = get_expectation(self.probs)
         
@@ -235,7 +234,7 @@ class TestUtilityFunctions:
     
     def test_make_one_hot(self):
         """Test make_one_hot function."""
-        from utils.optimization import make_one_hot
+        from mcal.utils.optimization import make_one_hot
         
         one_hot = make_one_hot(self.probs)
         

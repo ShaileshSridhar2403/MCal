@@ -20,8 +20,6 @@ import xgboost as xgb
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(mcal_root))
-sys.path.insert(0, str(mcal_root / "src"))
 
 
 def load_and_create_missingness_train(missingness_dir):

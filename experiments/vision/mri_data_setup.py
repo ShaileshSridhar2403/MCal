@@ -10,16 +10,12 @@ import numpy as np
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / "src"))
-sys.path.insert(0, str(project_root / "configs"))
-sys.path.insert(0, str(project_root / "experiments"))
 
 # Import MCal components
-from src.data.loaders import MRILoader
-from src.data.augmentation.patch_cutout import PatchCutout
-from configs.model_dict import get_model_path
-from configs.dataset_configs import get_dataset_config
+from mcal.data.loaders import MRILoader
+from mcal.data.augmentation.patch_cutout import PatchCutout
+from mcal.configs.model_dict import get_model_path
+from mcal.configs.dataset_configs import get_dataset_config
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")

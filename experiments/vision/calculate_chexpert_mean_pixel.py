@@ -13,13 +13,11 @@ from tqdm import tqdm
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(mcal_root))
-sys.path.insert(0, str(mcal_root / "src"))
 import pdb
 
 # Import MCal data loaders
-from src.data.loaders import ChexPertLoader
-from chexpert_data_setup import chexpert_full_setup
+from mcal.data.loaders import ChexPertLoader
+from experiments.vision.chexpert_data_setup import chexpert_full_setup
 
 def calculate_chexpert_mean_pixel_values():
     """Calculate mean pixel values for the CheXpert training dataset.

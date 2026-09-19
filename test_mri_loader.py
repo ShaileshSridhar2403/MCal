@@ -15,10 +15,8 @@ import torch
 
 # Add project paths
 project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / "src"))
 
-from src.data.loaders.vision_loaders import MRILoader
+from mcal.data.loaders.vision_loaders import MRILoader
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

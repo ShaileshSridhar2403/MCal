@@ -31,9 +31,8 @@ warnings.filterwarnings('ignore')
 
 # Add MCal imports
 import sys
-sys.path.append('/home/antonxue/shailesh/MCal/src')
-from calibrators.mcal_ce import MCal_CE
-from utils.optimization import kl_divergence, get_expectation
+from mcal.calibrators.mcal_ce import MCal_CE
+from mcal.utils.optimization import kl_divergence, get_expectation
 
 
 class ControlledRetrainExperiment:

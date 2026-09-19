@@ -1,14 +1,17 @@
 """Model dictionary mapping datasets to trained model files.
 
 This file maps each dataset and augmentation type to the corresponding
-pre-trained model file. Models are expected in the saved_models/ directory.
+pre-trained model file. Models are expected in ``MCAL_MODEL_ROOT``
+(``saved_models/`` by default; see ``mcal.paths``).
 """
 
 from pathlib import Path
 import os
 
+from ..paths import MODEL_ROOT
+
 # Base directory for saved models
-SAVED_MODELS_DIR = Path(__file__).parent.parent / "saved_models"
+SAVED_MODELS_DIR = MODEL_ROOT
 
 # Model dictionary mapping dataset -> augmentation -> model file
 MODEL_DICT = {

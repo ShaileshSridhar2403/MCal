@@ -12,6 +12,7 @@ echo ""
 
 # Get the script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "${SCRIPT_DIR}"  # run everything from the repository root
 
 # Track start time
 START_TIME=$(date +%s)
@@ -29,8 +30,7 @@ echo ""
 echo "----------------------------------------------------------------------"
 echo "[1/8] Running Brain MRI benchmark..."
 echo "----------------------------------------------------------------------"
-cd "${SCRIPT_DIR}/experiments/vision"
-python mri_kl_benchmark.py \
+python -m experiments.vision.mri_kl_benchmark \
     --methods baseline replace_mean patchcutout arch_mod temperature platt mcal_ce \
     --runs 10
 echo "✓ Brain MRI completed"
@@ -40,8 +40,7 @@ echo ""
 echo "----------------------------------------------------------------------"
 echo "[2/8] Running CheXpert benchmark..."
 echo "----------------------------------------------------------------------"
-cd "${SCRIPT_DIR}/experiments/vision"
-python chexpert_kl_benchmark.py \
+python -m experiments.vision.chexpert_kl_benchmark \
     --methods baseline replace_mean patchcutout arch_mod temperature platt mcal_ce \
     --runs 10
 echo "✓ CheXpert completed"
@@ -51,8 +50,7 @@ echo ""
 echo "----------------------------------------------------------------------"
 echo "[3/8] Running BreakHis benchmark..."
 echo "----------------------------------------------------------------------"
-cd "${SCRIPT_DIR}/experiments/vision"
-python breakhis_kl_benchmark.py \
+python -m experiments.vision.breakhis_kl_benchmark \
     --methods baseline replace_mean patchcutout arch_mod temperature platt mcal_ce \
     --runs 10
 echo "✓ BreakHis completed"
@@ -71,8 +69,7 @@ echo ""
 echo "----------------------------------------------------------------------"
 echo "[4/8] Running MedQA benchmark..."
 echo "----------------------------------------------------------------------"
-cd "${SCRIPT_DIR}/experiments/language"
-python medqa_kl_benchmark.py \
+python -m experiments.language.medqa_kl_benchmark \
     --methods baseline temperature platt mcal_ce token_drop attention_mask \
     --runs 10
 echo "✓ MedQA completed"
@@ -82,8 +79,7 @@ echo ""
 echo "----------------------------------------------------------------------"
 echo "[5/8] Running MedMCQA benchmark..."
 echo "----------------------------------------------------------------------"
-cd "${SCRIPT_DIR}/experiments/language"
-python medmcqa_kl_benchmark.py \
+python -m experiments.language.medmcqa_kl_benchmark \
     --methods baseline temperature platt mcal_ce token_drop attention_mask \
     --runs 10
 echo "✓ MedMCQA completed"
@@ -102,8 +98,7 @@ echo ""
 echo "----------------------------------------------------------------------"
 echo "[6/8] Running PhysioNet benchmark..."
 echo "----------------------------------------------------------------------"
-cd "${SCRIPT_DIR}/experiments/tabular"
-python physionet_kl_benchmark.py \
+python -m experiments.tabular.physionet_kl_benchmark \
     --methods baseline replace_mean temperature platt mcal_ce arch_mod retrain \
     --runs 10
 echo "✓ PhysioNet completed"
@@ -113,8 +108,7 @@ echo ""
 echo "----------------------------------------------------------------------"
 echo "[7/8] Running Breast Cancer benchmark..."
 echo "----------------------------------------------------------------------"
-cd "${SCRIPT_DIR}/experiments/tabular"
-python breast_cancer_kl_benchmark.py \
+python -m experiments.tabular.breast_cancer_kl_benchmark \
     --methods baseline replace_mean temperature platt mcal_ce arch_mod retrain \
     --runs 10
 echo "✓ Breast Cancer completed"
@@ -124,8 +118,7 @@ echo ""
 echo "----------------------------------------------------------------------"
 echo "[8/8] Running Cardiotocography (CTG) benchmark..."
 echo "----------------------------------------------------------------------"
-cd "${SCRIPT_DIR}/experiments/tabular"
-python ctg_kl_benchmark.py \
+python -m experiments.tabular.ctg_kl_benchmark \
     --methods baseline replace_mean temperature platt mcal_ce arch_mod retrain \
     --runs 10
 echo "✓ CTG completed"

@@ -13,13 +13,11 @@ from tqdm import tqdm
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(mcal_root))
-sys.path.insert(0, str(mcal_root / "src"))
 import pdb
 
 # Import MCal data loaders
-from src.data.loaders import BreakHisLoader
-from breakhis_data_setup import BreakHis_full_setup
+from mcal.data.loaders import BreakHisLoader
+from experiments.vision.breakhis_data_setup import BreakHis_full_setup
 
 def calculate_breakhis_mean_pixel_values():
     """Calculate mean pixel values for the BreakHis training dataset.

@@ -19,9 +19,8 @@ import matplotlib.pyplot as plt
 # Add src to path
 current_dir = Path(__file__).parent
 project_root = current_dir.parent.parent
-sys.path.insert(0, str(project_root / "src"))
 
-from calibrators.temperature import TemperatureScaling
+from mcal.calibrators.temperature import TemperatureScaling
 
 
 def compute_ece(probs, labels, n_bins=10):
@@ -243,8 +242,7 @@ def main():
     print(f"Using device: {device}")
 
     # Load some sample data from breast cancer dataset
-    sys.path.insert(0, str(Path(__file__).parent))
-    from breast_cancer_data_setup import load_breast_cancer_data
+    from experiments.tabular.breast_cancer_data_setup import load_breast_cancer_data
 
     print("Loading breast cancer data for tuning...")
     predictions_tensor, labels_tensor = load_breast_cancer_data(

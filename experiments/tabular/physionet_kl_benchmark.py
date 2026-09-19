@@ -23,26 +23,24 @@ from tabulate import tabulate
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(mcal_root))
-sys.path.insert(0, str(mcal_root / "src"))
 
 # Import MCal components
-from utils.optimization import make_one_hot
-from calibrators.mcal import MCal
-from calibrators.mcal_ce import MCal_CE
-from calibrators.platt import PlattCalibrator
-from calibrators.temperature import TemperatureScaling
+from mcal.utils.optimization import make_one_hot
+from mcal.calibrators.mcal import MCal
+from mcal.calibrators.mcal_ce import MCal_CE
+from mcal.calibrators.platt import PlattCalibrator
+from mcal.calibrators.temperature import TemperatureScaling
 
 # Import data setup (from current directory)
 
-from physionet_data_setup import load_physionet_data
+from experiments.tabular.physionet_data_setup import load_physionet_data
 
 
 
 
 # Import result utilities (from current directory)
 try:
-    from tabular_utils import (
+    from experiments.tabular.tabular_utils import (
         aggregate_results,
         build_kl_comparison_table,
         save_results,
@@ -179,7 +177,7 @@ def aggregate_fractionwise_kl(fractionwise_results):
 
 
 # MCal optimization utilities
-from utils.optimization import kl_divergence, get_expectation
+from mcal.utils.optimization import kl_divergence, get_expectation
 
 
 def calculate_kl_metrics(outputs, labels=None, device=None):

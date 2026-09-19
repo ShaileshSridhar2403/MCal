@@ -22,25 +22,23 @@ import pdb
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(mcal_root))
-sys.path.insert(0, str(mcal_root / "configs"))
-sys.path.insert(0, str(mcal_root / "src"))
 
 # Import MCal utilities
-from src.utils.optimization import get_expectation, make_one_hot, kl_divergence
+from mcal.utils.optimization import get_expectation, make_one_hot, kl_divergence
 
 # Import calibrator modules
-from src.calibrators.mcal import MCal
-from src.calibrators.mcal_ce import MCal_CE
-from src.calibrators.platt import PlattCalibrator
-from src.calibrators.temperature import TemperatureScaling
+from mcal.calibrators.mcal import MCal
+from mcal.paths import MODEL_ROOT
+from mcal.calibrators.mcal_ce import MCal_CE
+from mcal.calibrators.platt import PlattCalibrator
+from mcal.calibrators.temperature import TemperatureScaling
 
 # Import transform modules for backward compatibility
-from src.transforms.lambda_transforms import ExpectationLambdaTransform, OptimizedLambdaTransform
-from src.transforms.logits import LogitsSharpTransform
+from mcal.transforms.lambda_transforms import ExpectationLambdaTransform, OptimizedLambdaTransform
+from mcal.transforms.logits import LogitsSharpTransform
 
 # Import our self-contained MedQA utilities
-from medqa_utils import (
+from experiments.language.medqa_utils import (
     MCal_LLaMAModel,
     load_local_medqa_data,
     load_real_medqa_data,
@@ -488,7 +486,7 @@ def build_kl_comparison_table(aggregated_results, include_methods=None):
     return table
 
 def load_medqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
-                   model_path="saved_models/language/Meta-Llama-3-8B-Instruct/",
+                   model_path=str(MODEL_ROOT / "language" / "Meta-Llama-3-8B-Instruct"),
                    use_real_data=True, balanced=True):
     """Load MedQA data following vision benchmark pattern."""
 
@@ -535,7 +533,7 @@ def load_medqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
 
         elif model_type == "qlora":
             # Use qlora strategy
-            model = MCal_LLaMAModel("saved_models/medqa/medqa_p0.5/merged_model")
+            model = MCal_LLaMAModel(str(MODEL_ROOT / "medqa" / "medqa_p0.5" / "merged_model"))
             predictions = generate_fractionwise_predictions(
                 model=model,
                 data=medqa_questions,
@@ -589,7 +587,7 @@ def load_medqa_data(model_type="vanilla", n_samples=10, n_fractions=10,
 
 def process_medqa_dataset(methods=None, device="cuda", save_dir="./results", n_runs=3,
                          n_samples=10, n_fractions=10,
-                         model_path="saved_models/language/Meta-Llama-3-8B-Instruct/",
+                         model_path=str(MODEL_ROOT / "language" / "Meta-Llama-3-8B-Instruct"),
                          use_real_data=True, balanced=True):
     """Process MedQA dataset and generate KL benchmarks - IDENTICAL STRUCTURE to vision."""
 
@@ -806,7 +804,7 @@ def main():
     parser.add_argument("--device", type=str, default="cuda", help="Device (cuda/cpu)")
     parser.add_argument("--save_dir", type=str, default=str(Path(__file__).parent / "results"), help="Save directory")
     parser.add_argument("--model_path", type=str,
-                       default="saved_models/language/Meta-Llama-3-8B-Instruct/",
+                       default=str(MODEL_ROOT / "language" / "Meta-Llama-3-8B-Instruct"),
                        help="Path to LLaMA model")
     parser.add_argument("--use_real_data", action="store_true", default=True,
                        help="Use real MedQA dataset (default: True)")

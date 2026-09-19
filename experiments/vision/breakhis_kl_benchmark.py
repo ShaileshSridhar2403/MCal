@@ -20,40 +20,36 @@ from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from torchvision import datasets
 import pdb
-import breakhis_data_setup as bds
-from vit_patch_drop_outputs import get_patch_drop_outputs
+import experiments.vision.breakhis_data_setup as bds
+from experiments.vision.vit_patch_drop_outputs import get_patch_drop_outputs
 
 # Add MCal to path (file is now in experiments/vision/)
 mcal_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(mcal_root))
-sys.path.insert(0, str(mcal_root / "configs"))
-sys.path.insert(0, str(mcal_root / "src"))
-sys.path.insert(0, str(mcal_root / "experiments"))
 
 # No need for XAI_Benchmark paths since we're using MCal's own loaders
 
-from configs.model_dict import get_model_path
-from configs.dataset_configs import get_dataset_config
+from mcal.configs.model_dict import get_model_path
+from mcal.configs.dataset_configs import get_dataset_config
 import timm
 
 # Import MCal data loaders
-from src.data.loaders import BreakHisLoader
+from mcal.data.loaders import BreakHisLoader
 
 # Import augmentation utilities from MCal
-from src.data.augmentation.patch_cutout import PatchCutout
+from mcal.data.augmentation.patch_cutout import PatchCutout
 
 # Import utils directly to avoid circular imports
-from src.utils.optimization import get_expectation, make_one_hot, kl_divergence
+from mcal.utils.optimization import get_expectation, make_one_hot, kl_divergence
 
 # Import calibrator modules
-from src.calibrators.mcal import MCal
-from src.calibrators.mcal_ce import MCal_CE
-from src.calibrators.platt import PlattCalibrator
-from src.calibrators.temperature import TemperatureScaling
+from mcal.calibrators.mcal import MCal
+from mcal.calibrators.mcal_ce import MCal_CE
+from mcal.calibrators.platt import PlattCalibrator
+from mcal.calibrators.temperature import TemperatureScaling
 
 # Import transform modules for backward compatibility  
-from src.transforms.lambda_transforms import ExpectationLambdaTransform, OptimizedLambdaTransform
-from src.transforms.logits import LogitsSharpTransform
+from mcal.transforms.lambda_transforms import ExpectationLambdaTransform, OptimizedLambdaTransform
+from mcal.transforms.logits import LogitsSharpTransform
 
 
 def load_breakhis_model(augmentation='vanilla', device=None):
@@ -560,7 +556,7 @@ def build_kl_comparison_table(aggregated_results, include_methods=None):
 
 def process_breakhis_dataset(methods=None, device="cuda", save_dir="./results", n_runs=3, 
                        n_samples=1000, n_fractions=16, overwrite=False, use_cache=True,
-                       patchcutout_data_dir="./dataset_store/model_outputs", use_default_data=True):
+                       use_default_data=True):
     """
     Process BreakHis dataset and generate benchmarks with multiple runs.
     
@@ -573,7 +569,6 @@ def process_breakhis_dataset(methods=None, device="cuda", save_dir="./results", 
         n_fractions (int): Number of fractions to generate
         overwrite (bool): Whether to overwrite existing results
         use_cache (bool): Whether to use cached predictions for vanilla model
-        patchcutout_data_dir (str): Directory containing PatchCutout predictions
         use_default_data (bool): Whether to use default BreakHis data
     """
     # Default methods - include all calibrators and pre-computed methods
@@ -734,7 +729,7 @@ def test_breakhis_data_generation_consistency():
     try:
         # Test basic dataset loading
         print("1. Testing basic dataset loading...")
-        from breakhis_data_setup import BreakHis_full_setup
+        from experiments.vision.breakhis_data_setup import BreakHis_full_setup
         train_dataset, test_dataset = BreakHis_full_setup()
         print(f"   Train dataset: {len(train_dataset) if train_dataset else 'None'} samples")
         print(f"   Test dataset: {len(test_dataset) if test_dataset else 'None'} samples")
@@ -785,9 +780,7 @@ def main():
     parser.add_argument("--samples", type=int, default=1000, help="Samples per fraction")
     parser.add_argument("--fractions", type=int, default=16, help="Number of fractions")
     parser.add_argument("--device", type=str, default="cuda", help="Device (cuda/cpu)")
-    parser.add_argument("--save_dir", type=str, default="./results", help="Save directory")
-    parser.add_argument("--patchcutout_data_dir", type=str, default="../../../XAI_Benchmark/dataset_store/model_outputs", 
-                       help="Directory containing PatchCutout predictions from XAI_Benchmark")
+    parser.add_argument("--save_dir", type=str, default=str(Path(__file__).parent / "results"), help="Save directory")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing results")
     parser.add_argument("--no-cache", action="store_true", help="Disable caching of generated predictions")
     parser.add_argument("--no-default-data", action="store_true", help="Disable use of default BreakHis data")
@@ -822,7 +815,6 @@ def main():
         n_fractions=args.fractions,
         overwrite=args.overwrite,
         use_cache=not args.no_cache,
-        patchcutout_data_dir=args.patchcutout_data_dir,
         use_default_data=not args.no_default_data
     )
     

@@ -13,15 +13,13 @@ from pathlib import Path
 from tqdm import tqdm
 
 # Add parent directory to path
-sys.path.append(str(Path(__file__).parent.parent))
 
-from all_data_loaders import load_mri_clean
-from configs.model_dict import MODEL_DICT
+from experiments.all_data_loaders import load_mri_clean
+from mcal.configs.model_dict import MODEL_DICT
 import timm
 
 # Add src to path for MCal imports
-sys.path.append(str(Path(__file__).parent.parent / 'src'))
-from calibrators.mcal_ce import SimpleMCalCE
+from mcal.calibrators.mcal_ce import SimpleMCalCE
 
 # Configuration
 config = {

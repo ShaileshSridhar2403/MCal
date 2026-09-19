@@ -10,11 +10,9 @@ import matplotlib.pyplot as plt
 
 # Add MCal to path
 mcal_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(mcal_root))
-sys.path.insert(0, str(mcal_root / "src"))
 
-from src.data.loaders import MRILoader
-from src.data.augmentation.patch_cutout import PatchCutout
+from mcal.data.loaders import MRILoader
+from mcal.data.augmentation.patch_cutout import PatchCutout
 
 def ablate_and_save():
     """Ablate single image with two different fill values and save as PNG."""
