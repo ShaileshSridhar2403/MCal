@@ -54,6 +54,7 @@ dev = ["pytest>=7"]
 
 [project.urls]
 Repository = "https://github.com/ShaileshSridhar2403/MCal"
+Paper = "https://arxiv.org/abs/2603.04831"
 
 [tool.setuptools.packages.find]
 include = ["mcal*"]

@@ -1,6 +1,6 @@
 # MCal: Missingness Bias Calibration
 
-Code for *Missingness Bias Calibration in Feature Attribution Explanations*
+Code for [*Missingness Bias Calibration in Feature Attribution Explanations*](https://arxiv.org/abs/2603.04831)
 by Shailesh Sridhar, Anton Xue and Eric Wong.
 
 Explanation methods such as LIME and SHAP probe a model with inputs that
@@ -96,8 +96,11 @@ its own terms; see [vit_patch_drop/NOTICE](vit_patch_drop/NOTICE).
 
 ```bibtex
 @misc{sridhar2026mcal,
-  title  = {Missingness Bias Calibration in Feature Attribution Explanations},
-  author = {Sridhar, Shailesh and Xue, Anton and Wong, Eric},
-  year   = {2026}
+  title         = {Missingness Bias Calibration in Feature Attribution Explanations},
+  author        = {Sridhar, Shailesh and Xue, Anton and Wong, Eric},
+  year          = {2026},
+  eprint        = {2603.04831},
+  archivePrefix = {arXiv},
+  url           = {https://arxiv.org/abs/2603.04831}
 }
 ```
