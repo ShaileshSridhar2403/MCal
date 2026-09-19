@@ -7,88 +7,6 @@ import torch
 from pathlib import Path
 
 
-def plot_calibration_curve(
-    y_true: Union[np.ndarray, torch.Tensor],
-    y_prob: Union[np.ndarray, torch.Tensor],
-    n_bins: int = 10,
-    strategy: str = 'uniform',
-    title: str = 'Calibration Curve',
-    save_path: Optional[Union[str, Path]] = None
-) -> Tuple[plt.Figure, plt.Axes]:
-    """Plot calibration curve (reliability diagram).
-    
-    Args:
-        y_true: True binary labels
-        y_prob: Predicted probabilities
-        n_bins: Number of bins for calibration curve
-        strategy: Binning strategy ('uniform' or 'quantile')
-        title: Title for the plot
-        save_path: Optional path to save the plot
-        
-    Returns:
-        Tuple of (figure, axes)
-    """
-    if isinstance(y_true, torch.Tensor):
-        y_true = y_true.cpu().numpy()
-    if isinstance(y_prob, torch.Tensor):
-        y_prob = y_prob.cpu().numpy()
-    
-    fig, ax = plt.subplots(figsize=(8, 6))
-    
-    # Create bins
-    if strategy == 'uniform':
-        bin_boundaries = np.linspace(0, 1, n_bins + 1)
-        bin_lowers = bin_boundaries[:-1]
-        bin_uppers = bin_boundaries[1:]
-    elif strategy == 'quantile':
-        bin_boundaries = np.percentile(y_prob, np.linspace(0, 100, n_bins + 1))
-        bin_lowers = bin_boundaries[:-1]
-        bin_uppers = bin_boundaries[1:]
-    
-    ece = 0  # Expected Calibration Error
-    bin_accuracies = []
-    bin_confidences = []
-    bin_counts = []
-    
-    for bin_lower, bin_upper in zip(bin_lowers, bin_uppers):
-        # Find samples in bin
-        in_bin = (y_prob > bin_lower) & (y_prob <= bin_upper)
-        prop_in_bin = in_bin.mean()
-        
-        if prop_in_bin > 0:
-            accuracy_in_bin = y_true[in_bin].mean()
-            avg_confidence_in_bin = y_prob[in_bin].mean()
-            bin_count = in_bin.sum()
-            
-            bin_accuracies.append(accuracy_in_bin)
-            bin_confidences.append(avg_confidence_in_bin)
-            bin_counts.append(bin_count)
-            
-            ece += np.abs(avg_confidence_in_bin - accuracy_in_bin) * prop_in_bin
-        else:
-            bin_accuracies.append(0)
-            bin_confidences.append((bin_lower + bin_upper) / 2)
-            bin_counts.append(0)
-    
-    # Plot calibration curve
-    ax.plot(bin_confidences, bin_accuracies, 'o-', label=f'Calibration curve (ECE = {ece:.3f})')
-    ax.plot([0, 1], [0, 1], 'k--', alpha=0.8, label='Perfect calibration')
-    
-    # Add histogram of predictions
-    ax.hist(y_prob, bins=n_bins, alpha=0.3, density=True, color='blue', label='Prediction histogram')
-    
-    ax.set_xlabel('Mean Predicted Probability')
-    ax.set_ylabel('Fraction of Positives')
-    ax.set_title(title)
-    ax.legend()
-    ax.grid(alpha=0.3)
-    
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    
-    return fig, ax
-
-
 def plot_kl_divergence(
     aggregated_results: dict,
     dataset: str,
@@ -139,7 +57,6 @@ def plot_kl_divergence(
         'expectation_onehot': "One-hot-based Transform",
         'patchcutout': "Training with PatchCutout",
         'patch_drop': "Patch Dropping",
-        'neural': "Neural Transform",
         'logits_sharp': "Logits Sharp Transform",
         'logits_sharp_unconditioned': "Logits Sharp Unconditioned Transform"
     }
@@ -304,54 +221,6 @@ def plot_kl_divergence(
     plt.close(fig_combined)
     plt.close(fig_prob)
     plt.close(fig_argmax)
-
-
-def plot_kl_divergence_simple(
-    kl_values: List[float],
-    labels: Optional[List[str]] = None,
-    title: str = 'KL Divergence Comparison',
-    save_path: Optional[Union[str, Path]] = None
-) -> Tuple[plt.Figure, plt.Axes]:
-    """Plot KL divergence values for simple comparison (original function renamed).
-    
-    Args:
-        kl_values: List of KL divergence values
-        labels: Optional labels for each value
-        title: Title for the plot
-        save_path: Optional path to save the plot
-        
-    Returns:
-        Tuple of (figure, axes)
-    """
-    fig, ax = plt.subplots(figsize=(10, 6))
-    
-    x_pos = np.arange(len(kl_values))
-    bars = ax.bar(x_pos, kl_values, alpha=0.7)
-    
-    # Color bars based on KL value (lower is better)
-    colors = plt.cm.RdYlGn_r(np.linspace(0.2, 0.8, len(kl_values)))
-    for bar, color in zip(bars, colors):
-        bar.set_color(color)
-    
-    ax.set_xlabel('Method')
-    ax.set_ylabel('KL Divergence')
-    ax.set_title(title)
-    ax.set_yscale('log')
-    
-    if labels:
-        ax.set_xticks(x_pos)
-        ax.set_xticklabels(labels, rotation=45, ha='right')
-    
-    # Add value labels on bars
-    for i, v in enumerate(kl_values):
-        ax.text(i, v, f'{v:.4f}', ha='center', va='bottom')
-    
-    ax.grid(axis='y', alpha=0.3)
-    
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    
-    return fig, ax
 
 
 def plot_training_curves(

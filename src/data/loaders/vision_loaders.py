@@ -294,60 +294,6 @@ class MRILoader(VisionDataLoader):
 
 
 
-class ImageNetLoader(VisionDataLoader):
-    """ImageNet dataset loader."""
-    
-    def __init__(
-        self,
-        data_dir: Optional[Union[str, Path]] = None,
-        cache_dir: Optional[Union[str, Path]] = None,
-        seed: int = 42,
-        image_size: int = 224
-    ):
-        super().__init__(data_dir, cache_dir, seed, image_size)
-        self.dataset_name = "imagenet"
-        self.num_classes = 1000
-        self.dataset_info = {
-            "description": "Large-scale image classification",
-            "modality": "vision", 
-            "task": "classification"
-        }
-    
-    def download_dataset(self, **kwargs) -> None:
-        """Download ImageNet dataset."""
-        logger.warning(
-            "ImageNet dataset requires registration at "
-            "https://www.image-net.org/download.php"
-        )
-    
-    def setup_dataset(
-        self,
-        train_dir: Optional[str] = None,
-        test_dir: Optional[str] = None,
-        val_dir: Optional[str] = None,
-        **kwargs
-    ) -> Tuple[Optional[Dataset], Optional[Dataset], Optional[Dataset]]:
-        """Setup ImageNet dataset."""
-        if train_dir is None:
-            train_dir = str(self.data_dir / "train")
-        if test_dir is None:
-            test_dir = str(self.data_dir / "val")  # ImageNet uses 'val' for test
-        
-        train_dataset = None
-        test_dataset = None
-        val_dataset = None
-        
-        if train_dir and os.path.exists(train_dir):
-            train_transform = self.get_transforms("train", **kwargs)
-            train_dataset = datasets.ImageFolder(train_dir, transform=train_transform)
-        
-        if test_dir and os.path.exists(test_dir):
-            test_transform = self.get_transforms("test", **kwargs)
-            test_dataset = datasets.ImageFolder(test_dir, transform=test_transform)
-        
-        return train_dataset, test_dataset, val_dataset
-
-
 class ChexPertLoader(VisionDataLoader):
     """CheXpert chest X-ray dataset loader."""
     
@@ -399,8 +345,6 @@ VISION_LOADERS = {
     "breakhis": BreakHisLoader,
     "mri": MRILoader,
     "chexpert": ChexPertLoader,
-    "imagenet": ImageNetLoader,
-    # "imagenette": ImageNetteLoader,
 }
 
 

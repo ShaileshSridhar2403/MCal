@@ -182,31 +182,3 @@ class LogitsSharpTransform(BaseTransform):
         self.kappa = save_dict.get('kappa', 1.0)
         self._is_fitted = True
 
-
-class LogitsSharpUnconstrainedTransform(LogitsSharpTransform):
-    """Unconstrained version of logit sharpening transformation."""
-    
-    def __init__(self, device: Optional[torch.device] = None, name: Optional[str] = None):
-        super().__init__(device, name if name is not None else "logits_sharp_unconstrained")
-    
-    def transform(self, input_tensor: torch.Tensor) -> torch.Tensor:
-        """Apply unconstrained logit sharpening."""
-        if not self.is_fitted:
-            raise ValueError("Transform must be fitted before use. Call fit() first.")
-        
-        if isinstance(input_tensor, np.ndarray):
-            input_tensor = torch.tensor(input_tensor, dtype=torch.float32)
-        
-        input_tensor = input_tensor.to(self.device)
-        
-        # Convert probabilities to logits
-        z = torch.log(input_tensor.clamp(min=1e-6, max=1-1e-6))
-        
-        # Apply learned scaling and bias
-        lambdas = torch.tensor(self.lambdas[0], device=self.device)
-        betas = torch.tensor(self.betas[0], device=self.device)
-        
-        # Transform without normalization constraint
-        q = F.softmax(z * lambdas + betas, dim=-1)
-        
-        return q

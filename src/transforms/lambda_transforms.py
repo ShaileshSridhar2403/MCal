@@ -183,9 +183,3 @@ class ExpectationLambdaTransform(LambdaTransform):
         self._is_fitted = True
         return stats
 
-
-class ExpectationLambdaOnehot(ExpectationLambdaTransform):
-    """Convenience class for one-hot expectation lambda transform."""
-    
-    def __init__(self, device: Optional[torch.device] = None, name: Optional[str] = None):
-        super().__init__(device, method='onehot', name=name)
