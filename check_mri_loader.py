@@ -210,13 +210,13 @@ def main():
     
     print("\n📝 Usage examples:")
     print("   # Basic test")
-    print("   python test_mri_loader.py")
+    print("   python check_mri_loader.py")
     print()
     print("   # Download dataset and run all tests")
-    print("   python test_mri_loader.py --download --all")
+    print("   python check_mri_loader.py --download --all")
     print()
     print("   # Test with custom data directory")
-    print("   python test_mri_loader.py --data-dir /path/to/data --test-batch")
+    print("   python check_mri_loader.py --data-dir /path/to/data --test-batch")
 
 if __name__ == "__main__":
     main()
