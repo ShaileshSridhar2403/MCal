@@ -223,3 +223,20 @@ experiments/language/results/
 dataset_v2/
 experiments/vision/data/
 experiments/data/*.zip
+
+# --- Release safety ---
+# CheXpert: research-use agreement forbids redistribution
+/experiments/vision/CheXpert-v1.0-small/
+# Local datasets. Anchored, so mcal/data/ is unaffected
+/data/
+# Weights and archives
+*.pth
+*.pt
+*.zip
+# macOS archive cruft
+__MACOSX/
+# Local tooling and internal planning notes
+.claude/
+tmp.info
+*_plan.md
+/RELEASE_PLAN.md
