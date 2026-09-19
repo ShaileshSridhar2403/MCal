@@ -215,8 +215,6 @@ __marimo__/
 saved_models/
 results/cache/
 
-experiments/results/
-experiments/language/results/
 
 
 # Large data directories
