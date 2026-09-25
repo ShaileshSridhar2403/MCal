@@ -238,3 +238,7 @@ __MACOSX/
 tmp.info
 *_plan.md
 /RELEASE_PLAN.md
+# Local Claude Code config: holds login credentials and session transcripts
+claude-me/
+# Draft manuscript with internal notes; the public paper is arXiv:2603.04831
+/MCal.pdf
