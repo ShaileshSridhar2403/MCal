@@ -92,6 +92,9 @@ pytest
 MIT, see [LICENSE](LICENSE). `vit_patch_drop/` is third-party code under
 its own terms; see [vit_patch_drop/NOTICE](vit_patch_drop/NOTICE).
 
+The datasets are covered by their own licences. See [DATA.md](DATA.md) for
+sources, licences and citations.
+
 ## Citation
 
 ```bibtex
