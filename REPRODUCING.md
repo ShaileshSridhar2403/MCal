@@ -19,7 +19,7 @@ their own folder.
 | Table 1 | `notebooks/plot_all_results.ipynb` and the benchmarks | Result files, see below | Printed tables | Mostly not; see gaps 2-4 |
 | Figure 8 | `experiments/plot_mcal_training_dynamics.ipynb` | `results/mcal_training_dynamics.json`, `saved_models/mri/vit_mri_ps32_ablate0.00_best.pth` | `experiments/results/*_{loss_curves,test_acc_vs_n,missingness_bias_vs_n,training_time_vs_n}.pdf` | Not reproducible; see gap 1 |
 | Figures 9-10 | `experiments/language/lime_appendix/openai_lime_demo.ipynb` | `OPENAI_API_KEY` | `experiments/language/lime_appendix/lime_visualizations/*.pdf` | Reruns query GPT-4o-mini, so results vary |
-| Figure 11 | `experiments/mri_lime_visual_demo.ipynb` | Brain MRI, `vit_timm_standard_mri_ps64_35e.pth` | `experiments/results/lime_visual_examples/lime_comparison_image_{00..15}.pdf` (4 used in the paper) | Needs the weights, see gap 5 |
+| Figure 11 | `experiments/mri_lime_visual_demo.ipynb` | Brain MRI, `vit_timm_standard_mri_ps64_35e.pth` | `experiments/results/lime_visual_examples/lime_comparison_image_{00..15}.pdf` (4 used in the paper); not included, as they show MRI scans, see [DATA.md](DATA.md) | Needs the dataset and the weights, see gap 5 |
 
 Every generated figure's output files are committed, so they can be checked
 without rerunning anything.

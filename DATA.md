@@ -10,6 +10,14 @@ this work.
 
 ## Included in this repository
 
+### PhysioNet/CinC Challenge 2012
+
+- **File:** `experiments/tabular/balanced_physionet_dataset_0-30.csv`: 1,050 de-identified ICU stays from training set A with 0–30% missing values, class-balanced on in-hospital death (525 per class). One row per stay: age, gender, height, weight, ICU type, outcomes, and summary statistics of the recorded time series.
+- **Source:** <https://physionet.org/content/challenge-2012/1.0.0/> (training set A and `Outcomes-a.txt`)
+- **Licence:** [Open Data Commons Attribution License v1.0](https://opendatacommons.org/licenses/by/1-0/), open access.
+- **Preparation:** `experiments/tabular/process_physionet_data.py` builds a one-row-per-patient table, `PhysionetChallenge2012-set-a.csv.gz`, from the raw set A files and splits it into the missingness-level files the main benchmark reads from `$MCAL_DATA_ROOT/tabular/missingness_levels/`. The included CSV is the class-balanced 0–30% subset used by the analysis scripts in `experiments/tabular/`.
+- **Cite:** Silva, I., Moody, G., Scott, D. J., Celi, L. A. & Mark, R. G. (2012). Predicting in-hospital mortality of ICU patients: The PhysioNet/Computing in Cardiology Challenge 2012. *Computing in Cardiology*, 39, 245–248. PhysioNet also asks you to cite the platform, as listed on the page above.
+
 ### Cardiotocography (CTG)
 
 - **Files:** `experiments/data/ctg_features.csv`, `experiments/data/ctg_targets.csv`
@@ -25,20 +33,20 @@ this work.
 - **Licence:** MIT, Copyright (c) 2022 MedMCQA. The full licence text accompanies the data in [`experiments/language/dataset_store/LICENSE-MedMCQA.md`](experiments/language/dataset_store/LICENSE-MedMCQA.md).
 - **Cite:** Pal, A., Umapathi, L. K. & Sankarasubbu, M. (2022). MedMCQA: A large-scale multi-subject multi-choice dataset for medical domain question answering. *Proceedings of the Conference on Health, Inference, and Learning*, PMLR 174, 248–260.
 
-### Brain Tumor MRI (images in figures and notebook outputs)
+### MedQA (question excerpts)
 
-- **Where:** rendered MRI slices appear in `experiments/results/lime_visual_examples/*.pdf` and in the saved outputs of `experiments/mri_lime_visual_demo.ipynb`. The dataset itself is not included.
-- **Source:** Nickparvar, M. (2021). *Brain Tumor MRI Dataset*. Kaggle. <https://www.kaggle.com/dsv/2645886>
-- **Licence:** **to be confirmed before public release.** The dataset is assembled from earlier collections (figshare, SARTAJ and Br35H), whose terms may also apply.
+- **Where:** question text appears in the saved outputs of `experiments/language/lime_appendix/openai_lime_demo.ipynb` and in the figures in `experiments/language/lime_appendix/lime_visualizations/`. The dataset itself is not included; the MedQA benchmark loads it through Hugging Face `datasets`.
+- **Source:** <https://github.com/jind11/MedQA>
+- **Licence:** MIT, Copyright (c) 2022 Di Jin. The full licence text is in [`experiments/language/lime_appendix/LICENSE-MedQA.md`](experiments/language/lime_appendix/LICENSE-MedQA.md).
+- **Cite:** Jin, D., Pan, E., Oufattole, N., Weng, W.-H., Fang, H. & Szolovits, P. (2021). What disease does this patient have? A large-scale open domain question answering dataset from medical exams. *Applied Sciences*, 11(14), 6421.
 
 ## Download separately
 
-### PhysioNet/CinC Challenge 2012
+### Brain Tumor MRI
 
-- **Source:** <https://physionet.org/content/challenge-2012/1.0.0/> (training set A and `Outcomes-a.txt`)
-- **Licence:** [Open Data Commons Attribution License v1.0](https://opendatacommons.org/licenses/by/1-0/), open access.
-- **Preparation:** `experiments/tabular/process_physionet_data.py` builds the one-row-per-patient table `PhysionetChallenge2012-set-a.csv.gz` from the raw set A files and splits it into the missingness-level files the benchmark reads from `$MCAL_DATA_ROOT/tabular/missingness_levels/`.
-- **Cite:** Silva, I., Moody, G., Scott, D. J., Celi, L. A. & Mark, R. G. (2012). Predicting in-hospital mortality of ICU patients: The PhysioNet/Computing in Cardiology Challenge 2012. *Computing in Cardiology*, 39, 245–248. PhysioNet also asks you to cite the platform, as listed on the page above.
+- **Source:** Nickparvar, M. (2021). *Brain Tumor MRI Dataset*. Kaggle. <https://www.kaggle.com/dsv/2645886>
+- **Licence:** see the dataset page. The dataset is assembled from earlier collections (figshare, SARTAJ and Br35H), whose terms may also apply.
+- **Note:** no MRI images are included. The per-image LIME examples behind the paper's Figure 11, and the image outputs of the MRI notebooks, were removed; `experiments/mri_lime_visual_demo.ipynb` regenerates them given the dataset and the trained weights.
 
 ### Breast Cancer Wisconsin (Diagnostic)
 
@@ -57,12 +65,6 @@ this work.
 - **Source:** <https://web.inf.ufpr.br/vri/databases/breast-cancer-histopathological-database-breakhis/>
 - **Licence:** research use, under the providers' terms.
 - **Cite:** Spanhol, F. A., Oliveira, L. S., Petitjean, C. & Heutte, L. (2016). A dataset for breast cancer histopathological image classification. *IEEE Transactions on Biomedical Engineering*, 63(7), 1455–1462.
-
-### MedQA
-
-- **Source:** <https://github.com/jind11/MedQA>
-- **Licence:** MIT
-- **Cite:** Jin, D., Pan, E., Oufattole, N., Weng, W.-H., Fang, H. & Szolovits, P. (2021). What disease does this patient have? A large-scale open domain question answering dataset from medical exams. *Applied Sciences*, 11(14), 6421.
 
 ## Models
 
